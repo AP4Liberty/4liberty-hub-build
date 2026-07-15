@@ -1,0 +1,24 @@
+/*
+Theme Name: 4Liberty Network
+Theme URI: https://wakeupamericashow.com
+Author: Stonegait Pictures LLC
+Author URI: https://wakeupamericashow.com
+Description: Custom lightweight block theme for the 4Liberty Network hub — editorial/newsroom front page, live-show hero, chat, tipping, and the shoppable popup. Built for speed and mobile-first.
+Requires at least: 6.5
+Tested up to: 6.9
+Requires PHP: 8.0
+Version: 0.1.0
+License: GNU General Public License v2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+Text Domain: fourliberty
+Tags: block-theme, news, full-site-editing, dark
+
+This theme intentionally ships almost no CSS here — layout, color, and type
+tokens live in theme.json so the owner can change them from Appearance ▸
+Editor without touching code. This file only carries WordPress's required
+header comment and a couple of resets theme.json can't express.
+*/
+
+/* Fallback resets (theme.json can't set these) */
+img { max-width: 100%; height: auto; }
+:where(.wp-site-blocks) > * { margin-block-start: 0; }

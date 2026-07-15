@@ -1,0 +1,14 @@
+# Secrets — never commit these
+deploy/.env*
+*.pem
+*.key
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+*.log
+
+# Local WP dev environment, if one gets added later
+/wordpress/
+/.wp-env.json
+node_modules/

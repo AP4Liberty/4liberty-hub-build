@@ -1,0 +1,47 @@
+<!-- wp:template-part {"slug":"header","tagName":"header"} /-->
+
+<!-- wp:group {"tagName":"main","layout":{"type":"constrained"},"style":{"spacing":{"margin":{"top":"34px","bottom":"44px"}}}} -->
+<main class="wp-block-group" style="margin-top:34px;margin-bottom:44px">
+
+	<!-- wp:html -->
+	<div class="fl-section-head">
+		<span class="fl-section-head__tab"></span>
+		<h2>Latest Stories</h2>
+		<span class="fl-section-head__rule"></span>
+	</div>
+	<!-- /wp:html -->
+
+	<!-- wp:query {"queryId":1,"query":{"perPage":9,"pages":0,"offset":0,"postType":"post","order":"desc","orderBy":"date","inherit":true}} -->
+	<div class="wp-block-query">
+		<!-- wp:post-template {"className":"fl-cardrow fl-cardrow--listing"} -->
+			<!-- wp:group {"className":"fl-card","layout":{"type":"default"}} -->
+			<div class="wp-block-group fl-card">
+				<!-- wp:post-featured-image {"className":"fl-thumb","isLink":true} /-->
+				<!-- wp:group {"className":"fl-card__body"} -->
+				<div class="wp-block-group fl-card__body">
+					<!-- wp:post-terms {"term":"category","className":"fl-kicker"} /-->
+					<!-- wp:post-title {"level":4,"isLink":true} /-->
+				</div>
+				<!-- /wp:group -->
+			</div>
+			<!-- /wp:group -->
+		<!-- /wp:post-template -->
+
+		<!-- wp:query-pagination {"className":"fl-pagination","layout":{"type":"flex","justifyContent":"center"}} -->
+			<!-- wp:query-pagination-previous /-->
+			<!-- wp:query-pagination-numbers /-->
+			<!-- wp:query-pagination-next /-->
+		<!-- /wp:query-pagination -->
+
+		<!-- wp:query-no-results -->
+			<!-- wp:paragraph {"textColor":"muted"} -->
+			<p class="has-muted-color has-text-color">No stories published yet &mdash; check back soon.</p>
+			<!-- /wp:paragraph -->
+		<!-- /wp:query-no-results -->
+	</div>
+	<!-- /wp:query -->
+
+</main>
+<!-- /wp:group -->
+
+<!-- wp:template-part {"slug":"footer","tagName":"footer"} /-->

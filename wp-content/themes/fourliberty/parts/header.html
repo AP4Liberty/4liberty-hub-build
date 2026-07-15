@@ -1,0 +1,54 @@
+<!-- wp:html -->
+<div class="fl-ticker">
+	<div class="fl-ticker__row">
+		<span class="fl-live-tag"><span class="fl-pulse"></span>On Air</span>
+		<!-- Phase 2 (live-swapper) replaces this static line with the Netlify
+		     poller's sanitized feed: current live show + headline, or the
+		     schedule when dark. Left static and honest until that's wired. -->
+		<span class="fl-ticker__feed" data-fl="ticker-feed"><b>Wake Up America</b> airs weekday mornings — check back for live status.</span>
+		<span class="fl-ticker__clock">MON&ndash;FRI &middot; 7&ndash;9A CT</span>
+	</div>
+</div>
+<!-- /wp:html -->
+
+<!-- wp:group {"tagName":"header","className":"fl-masthead","layout":{"type":"constrained"}} -->
+<header class="wp-block-group fl-masthead">
+	<!-- wp:group {"className":"fl-masthead__row","layout":{"type":"flex","flexWrap":"nowrap","justifyContent":"space-between"}} -->
+	<div class="wp-block-group fl-masthead__row">
+
+		<!-- wp:group {"className":"fl-brand","layout":{"type":"flex","flexWrap":"nowrap"}} -->
+		<div class="wp-block-group fl-brand">
+			<!-- wp:site-logo {"width":38,"shouldSyncIcon":false} /-->
+			<!-- wp:html -->
+			<a href="/" class="fl-wordmark-link" aria-label="4Liberty Network — home">
+				<span class="fl-wordmark">
+					<span class="fl-wordmark__main">4LIBERTY</span>
+					<span class="fl-wordmark__sub">NETWORK</span>
+				</span>
+			</a>
+			<!-- /wp:html -->
+		</div>
+		<!-- /wp:group -->
+
+		<!-- wp:navigation {"className":"fl-masthead__nav","layout":{"type":"flex","justifyContent":"left"},"overlayMenu":"mobile"} -->
+		<!-- wp:navigation-link {"label":"Home","url":"/"} /-->
+		<!-- wp:navigation-link {"label":"Shows","url":"/shows/"} /-->
+		<!-- wp:navigation-link {"label":"Politics","url":"/category/politics/"} /-->
+		<!-- wp:navigation-link {"label":"Culture","url":"/category/culture/"} /-->
+		<!-- wp:navigation-link {"label":"Nationalism","url":"/category/nationalism/"} /-->
+		<!-- wp:navigation-link {"label":"Watch Live","url":"/watch-live/"} /-->
+		<!-- /wp:navigation -->
+
+		<!-- wp:group {"className":"fl-masthead__actions","layout":{"type":"flex","flexWrap":"nowrap"}} -->
+		<div class="wp-block-group fl-masthead__actions">
+			<!-- wp:search {"label":"Search","showLabel":false,"buttonUseIcon":true,"buttonPosition":"button-only"} /-->
+			<!-- wp:html -->
+			<a href="/support/" class="fl-btn-support">Support</a>
+			<!-- /wp:html -->
+		</div>
+		<!-- /wp:group -->
+
+	</div>
+	<!-- /wp:group -->
+</header>
+<!-- /wp:group -->

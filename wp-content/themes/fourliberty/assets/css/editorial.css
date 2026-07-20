@@ -807,6 +807,13 @@ a.fl-tier:hover { border-color: var(--wp--preset--color--gold-deep); }
 	.fl-story { grid-template-columns: 76px 1fr; }
 	.fl-wordmark__sub { display: none; }
 }
+@media (max-width: 600px) {
+	/* Masthead search + Support button force nowrap (header.html); at phone
+	   widths there isn't room for logo + nav toggle + search + Support, and
+	   Support overflowing off-screen breaks the /support donation CTA. Drop
+	   the search icon to make room — it's the lowest-value item in that row. */
+	.fl-masthead__actions .wp-block-search { display: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
 	.fl-pulse { animation: none; }

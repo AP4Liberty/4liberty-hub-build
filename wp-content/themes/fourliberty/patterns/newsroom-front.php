@@ -50,7 +50,7 @@ if ( ! function_exists( 'fourliberty_pattern_first_category' ) ) {
 	}
 }
 ?>
-<!-- wp:group {"className":"fl-section","layout":{"type":"constrained"}} -->
+<!-- wp:group {"className":"fl-section","layout":{"type":"constrained","contentSize":"1200px"}} -->
 <div class="wp-block-group fl-section">
 
 	<!-- wp:html -->

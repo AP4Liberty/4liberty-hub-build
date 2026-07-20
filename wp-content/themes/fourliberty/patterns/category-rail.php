@@ -38,7 +38,7 @@ if ( ! $fl_card_query->have_posts() ) {
 	);
 }
 ?>
-<!-- wp:group {"className":"fl-section","layout":{"type":"constrained"}} -->
+<!-- wp:group {"className":"fl-section","layout":{"type":"constrained","contentSize":"1200px"}} -->
 <div class="wp-block-group fl-section">
 
 	<!-- wp:html -->

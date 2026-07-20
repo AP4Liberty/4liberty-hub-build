@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 ?>
-<!-- wp:group {"className":"fl-section","layout":{"type":"constrained"}} -->
+<!-- wp:group {"className":"fl-section","layout":{"type":"constrained","contentSize":"1200px"}} -->
 <div class="wp-block-group fl-section">
 	<!-- wp:html -->
 	<div class="fl-newsletter">

@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 ?>
-<!-- wp:group {"className":"fl-hero","layout":{"type":"constrained"}} -->
+<!-- wp:group {"className":"fl-hero","layout":{"type":"constrained","contentSize":"1200px"}} -->
 <div class="wp-block-group fl-hero">
 
 	<!-- wp:columns {"className":"fl-hero-grid","style":{"spacing":{"blockGap":{"left":"22px"}}}} -->

@@ -55,18 +55,21 @@ add_action( 'after_setup_theme', 'fourliberty_setup' );
  * still follows whatever palette the owner sets in Appearance ▸ Editor.
  */
 function fourliberty_assets() {
+	// filemtime()-based versions so the enqueued URL changes on every deploy —
+	// a static version string left cached CSS/JS stale in visitors' browsers
+	// for up to a month (Cache-Control: max-age=2678400) after any edit.
 	wp_enqueue_style(
 		'fourliberty-editorial',
 		get_theme_file_uri( 'assets/css/editorial.css' ),
 		array(),
-		FOURLIBERTY_VERSION
+		filemtime( get_theme_file_path( 'assets/css/editorial.css' ) )
 	);
 
 	wp_enqueue_script(
 		'fourliberty-site',
 		get_theme_file_uri( 'assets/js/site.js' ),
 		array(),
-		FOURLIBERTY_VERSION,
+		filemtime( get_theme_file_path( 'assets/js/site.js' ) ),
 		true
 	);
 }

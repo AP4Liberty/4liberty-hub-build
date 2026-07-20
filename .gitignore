@@ -12,3 +12,9 @@ Thumbs.db
 /wordpress/
 /.wp-env.json
 node_modules/
+
+# Netlify local state — never user code
+.netlify/
+
+# Build artifacts — regenerate with `python deploy/make_zips.py`
+deploy/dist/

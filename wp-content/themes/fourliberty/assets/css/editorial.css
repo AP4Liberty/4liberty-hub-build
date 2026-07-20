@@ -65,14 +65,33 @@
 .fl-ticker__clock { margin-left: auto; white-space: nowrap; flex: none; }
 
 /* ---------- Masthead ---------- */
+/* backdrop-filter deliberately lives on ::before, NOT on .fl-masthead itself.
+   backdrop-filter (like filter/transform/perspective) makes the element it's
+   set on become the CONTAINING BLOCK for any position:fixed descendant. The
+   mobile nav's full-screen overlay (WordPress core's
+   .wp-block-navigation__responsive-container, position:fixed; inset:0) lives
+   inside this header in the DOM — with backdrop-filter directly on
+   .fl-masthead, the overlay was trapped inside the ~73px header bar instead
+   of covering the viewport, clipped to a sliver that only fit the first link
+   ("Home") with the rest scrolled out of view. Moving the blur to a
+   decoratve, non-containing-block ::before keeps the frosted-glass look
+   without breaking the overlay. Bug found + fixed 2026-07-20 (Austin: "the
+   hamburger menu doesn't show any of the old menu items just a home page").
+*/
 .fl-masthead {
 	position: sticky;
 	top: 0;
 	z-index: 20;
+	border-bottom: 1px solid var(--wp--preset--color--line);
+}
+.fl-masthead::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
 	background: rgba(15,13,21,.86);
 	backdrop-filter: blur(10px);
 	-webkit-backdrop-filter: blur(10px);
-	border-bottom: 1px solid var(--wp--preset--color--line);
 }
 .fl-masthead .wp-block-navigation-item > a:hover {
 	color: var(--wp--preset--color--gold) !important;

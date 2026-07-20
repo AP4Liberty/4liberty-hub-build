@@ -299,6 +299,108 @@
 	color: var(--wp--preset--color--muted);
 	margin-top: 3px;
 }
+/* "also live" tiles render as <button> when clickable (swap hero) vs <a> when
+   gated (link out to Rumble) — this resets button chrome to match the <a>
+   styling above. See assets/js/live-state.js renderAlsoLive(). */
+button.fl-mini-live {
+	border: 0;
+	background: var(--wp--preset--color--surface);
+	font: inherit;
+	cursor: pointer;
+	text-align: left;
+}
+
+/* ---------- Live state machine (Phase 2) ---------- */
+/* Phase 1 shipped the badge/viewer-count always visible as an honest static
+   stub. assets/js/live-state.js toggles .is-live on .fl-player once a show is
+   actually live — hide them by default so the homepage never claims "Live"
+   when nothing is on air (Decision 7: never mislead a visitor). */
+.fl-badge-live,
+.fl-viewers { display: none; }
+.fl-player.is-live .fl-badge-live { display: inline-flex; }
+.fl-player.is-live .fl-viewers { display: flex; }
+
+/* Once a viewer presses play, live-state.js injects a .fl-player__frame
+   iframe and adds .is-playing — hide the facade chrome so the video is
+   unobstructed (badge/viewer-count stay visible, overlaid on the player). */
+.fl-player__frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; z-index: 1; }
+.fl-player.is-playing .fl-player__scrim,
+.fl-player.is-playing .fl-player-meta,
+.fl-player.is-playing .fl-play { display: none; }
+
+/* Gated broadcast (Decision 8, revised): a "Freedom Arcade"-style member-only
+   stream never embeds — the CTA replaces the play button entirely. */
+.fl-gated-cta {
+	position: absolute;
+	inset: 0;
+	margin: auto;
+	z-index: 3;
+	display: none;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	text-align: center;
+	padding: 0 24px;
+}
+.fl-player.is-gated .fl-gated-cta { display: flex; }
+.fl-player.is-gated .fl-play { display: none; }
+.fl-gated-cta__label {
+	font-family: var(--wp--preset--font-family--mono);
+	font-size: .64rem;
+	letter-spacing: .14em;
+	text-transform: uppercase;
+	color: #e9e3f2;
+	background: rgba(9,7,12,.55);
+	padding: 5px 12px;
+	border-radius: var(--fl-radius-pill);
+}
+.fl-gated-cta__btn {
+	font-family: var(--wp--preset--font-family--sans);
+	font-weight: 800;
+	font-size: .86rem;
+	text-transform: uppercase;
+	letter-spacing: .03em;
+	background: var(--wp--preset--color--gold);
+	color: #1a130a;
+	padding: 12px 22px;
+	border-radius: 10px;
+	text-decoration: none;
+	box-shadow: 0 8px 22px rgba(230,186,87,.28);
+	transition: transform .15s, background .15s;
+}
+.fl-gated-cta__btn:hover { transform: translateY(-1px); background: #f0c96c; }
+
+/* "Just went live" banner (Decision 6) — never yanks a playing hero; offers
+   the new show instead. Inserted above .fl-player only when needed. */
+.fl-live-banner {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	background: rgba(223,59,64,.12);
+	border: 1px solid var(--wp--preset--color--red);
+	border-radius: 10px;
+	padding: 10px 14px;
+	margin-bottom: 12px;
+	font-size: .84rem;
+	color: var(--wp--preset--color--headline);
+}
+.fl-live-banner__dot { background: var(--wp--preset--color--red-bright); }
+.fl-live-banner__text { flex: 1; }
+.fl-live-banner button {
+	font-family: var(--wp--preset--font-family--mono);
+	font-size: .7rem;
+	letter-spacing: .06em;
+	text-transform: uppercase;
+	border: 0;
+	border-radius: 7px;
+	cursor: pointer;
+	padding: 7px 12px;
+}
+.fl-live-banner__watch { background: var(--wp--preset--color--gold); color: #1a130a; font-weight: 700; }
+.fl-live-banner__watch:hover { background: #f0c96c; }
+.fl-live-banner__dismiss { background: transparent; color: var(--wp--preset--color--muted); font-size: .95rem; padding: 4px 8px; }
+.fl-live-banner__dismiss:hover { color: var(--wp--preset--color--headline); }
 
 /* ---------- Chat + tip rail ---------- */
 .fl-rail {

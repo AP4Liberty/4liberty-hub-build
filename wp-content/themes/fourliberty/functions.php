@@ -72,8 +72,72 @@ function fourliberty_assets() {
 		filemtime( get_theme_file_path( 'assets/js/site.js' ) ),
 		true
 	);
+
+	// Phase 2 live-swapper. Enqueued site-wide like fourliberty-site above —
+	// it no-ops immediately if [data-fl="hero-player"] isn't on the page, so
+	// there's no need for template-conditional loading.
+	wp_enqueue_script(
+		'fourliberty-live-state',
+		get_theme_file_uri( 'assets/js/live-state.js' ),
+		array(),
+		filemtime( get_theme_file_path( 'assets/js/live-state.js' ) ),
+		true
+	);
+	wp_localize_script( 'fourliberty-live-state', 'fourlibertyLiveShows', fourliberty_live_shows_config() );
+	wp_localize_script(
+		'fourliberty-live-state',
+		'fourlibertyLiveEndpoint',
+		array( 'url' => fourliberty_live_state_endpoint() )
+	);
 }
 add_action( 'wp_enqueue_scripts', 'fourliberty_assets' );
+
+/**
+ * The Netlify poller's public endpoint. A constant (not hardcoded in JS) so
+ * it can move — e.g. behind a custom domain once Cloudflare (Phase 5) is in
+ * front of the site — without a theme redeploy.
+ */
+function fourliberty_live_state_endpoint() {
+	return defined( 'FOURLIBERTY_LIVE_STATE_ENDPOINT' )
+		? FOURLIBERTY_LIVE_STATE_ENDPOINT
+		: 'https://4liberty-poller.netlify.app/api/live-state';
+}
+
+/**
+ * Live-show display config consumed by assets/js/live-state.js: display
+ * names, hero-priority order, and the gated-broadcast (Freedom Arcade) CTA.
+ *
+ * This is the seam Phase 2 task E (the admin "Live Shows" panel) writes to
+ * via update_option( 'fourliberty_live_shows_config', ... ) — until that
+ * panel exists, the defaults below (matching the roster locked in
+ * PHASE-2-BUILD-PLAN.md) are what ships. The JS never needs to change when
+ * the admin panel starts overriding this.
+ *
+ * gatedUrl below is a placeholder (best-guess Rumble channel URL format) —
+ * task E's admin field is the source of truth once it ships; confirm the
+ * real URL with Austin before relying on it.
+ */
+function fourliberty_live_shows_config() {
+	$defaults = array(
+		'order' => array( 'WUA', 'WUJC', 'CULTURAMA', 'HOMESCHOOL', 'CAFECITO' ),
+		'shows' => array(
+			'WUA'        => array(
+				'name'            => 'Wake Up America',
+				'host'            => 'with Austin Petersen',
+				'gatedTitleMatch' => 'Freedom Arcade',
+				'gatedLabel'      => 'Subscribe on Rumble to watch live →',
+				'gatedUrl'        => 'https://rumble.com/c/AP4Liberty',
+			),
+			'WUJC'       => array( 'name' => 'Wake Up Jefferson City' ),
+			'CULTURAMA'  => array( 'name' => 'Culturama' ),
+			'HOMESCHOOL' => array( 'name' => 'Homeschool Workshop' ),
+			'CAFECITO'   => array( 'name' => 'Cafecito Libre' ),
+		),
+	);
+
+	$stored = get_option( 'fourliberty_live_shows_config' );
+	return is_array( $stored ) ? $stored : $defaults;
+}
 
 /**
  * Register the theme's block pattern category so the front-page patterns

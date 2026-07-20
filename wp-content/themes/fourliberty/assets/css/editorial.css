@@ -853,6 +853,92 @@ a.fl-tier:hover { border-color: var(--wp--preset--color--gold-deep); }
 	.fl-supportgrid { grid-template-columns: 1fr; }
 }
 
+/* ---------- Shows page ---------- */
+.fl-showgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.fl-showcard {
+	position: relative;
+	display: block;
+	background: var(--wp--preset--color--surface);
+	border: 1px solid var(--wp--preset--color--line);
+	border-radius: var(--fl-radius-card);
+	padding: 20px 20px 18px;
+	text-decoration: none;
+	transition: transform .15s, border-color .15s;
+}
+.fl-showcard:hover { transform: translateY(-3px); border-color: var(--wp--preset--color--gold-deep); }
+.fl-showcard.is-live { border-color: var(--wp--preset--color--red); }
+/* Hidden until show-grid.js confirms the channel is actually live via the
+   same poller endpoint the homepage hero reads — never a static claim. */
+.fl-showcard__live {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	position: absolute;
+	top: -11px;
+	right: 16px;
+	background: var(--wp--preset--color--red);
+	color: #fff;
+	font-family: var(--wp--preset--font-family--mono);
+	font-size: .58rem;
+	font-weight: 700;
+	letter-spacing: .08em;
+	text-transform: uppercase;
+	padding: 4px 10px;
+	border-radius: 999px;
+}
+.fl-showcard__live .fl-pulse { background: #fff; }
+.fl-showcard h4 {
+	font-family: var(--wp--preset--font-family--serif);
+	font-size: 1.1rem;
+	color: var(--wp--preset--color--headline);
+	margin: 4px 0 6px;
+}
+.fl-showcard p { font-size: .86rem; color: var(--wp--preset--color--muted); margin: 0 0 10px; }
+.fl-showcard__detail {
+	display: block;
+	font-family: var(--wp--preset--font-family--mono);
+	font-size: .64rem;
+	letter-spacing: .04em;
+	color: var(--wp--preset--color--faint);
+	margin-bottom: 12px;
+}
+.fl-showcard__cta {
+	display: block;
+	font-size: .8rem;
+	font-weight: 700;
+	color: var(--wp--preset--color--gold);
+}
+@media (max-width: 782px) {
+	.fl-showgrid { grid-template-columns: 1fr; }
+}
+
+/* ---------- Shop page ---------- */
+.fl-shop-band {
+	border-radius: 16px;
+	border: 1px solid var(--wp--preset--color--line);
+	background: var(--wp--preset--color--surface);
+	padding: 26px 28px;
+	display: flex;
+	align-items: center;
+	gap: 24px;
+	flex-wrap: wrap;
+}
+.fl-shop-band__copy { flex: 1; min-width: 240px; }
+.fl-shop-band h2 { margin: .3rem 0 .3rem !important; font-size: 1.4rem !important; }
+.fl-shop-band p { color: var(--wp--preset--color--body-text); font-size: .92rem; margin: 0; }
+.fl-shop-band__cta {
+	background: var(--wp--preset--color--gold);
+	color: #1a130a;
+	font-weight: 800;
+	font-size: .92rem;
+	padding: 14px 24px;
+	border-radius: 10px;
+	text-decoration: none;
+	white-space: nowrap;
+	transition: background .15s, transform .15s;
+}
+.fl-shop-band__cta:hover { background: #f0c86a; transform: translateY(-1px); }
+
 /* ---------- Eyebrow / kicker utility ---------- */
 .fl-eyebrow {
 	font-family: var(--wp--preset--font-family--mono);

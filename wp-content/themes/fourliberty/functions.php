@@ -89,6 +89,20 @@ function fourliberty_assets() {
 		'fourlibertyLiveEndpoint',
 		array( 'url' => fourliberty_live_state_endpoint() )
 	);
+
+	// /shows/ page live badges — same no-op-if-absent pattern, same endpoint.
+	wp_enqueue_script(
+		'fourliberty-show-grid',
+		get_theme_file_uri( 'assets/js/show-grid.js' ),
+		array(),
+		filemtime( get_theme_file_path( 'assets/js/show-grid.js' ) ),
+		true
+	);
+	wp_localize_script(
+		'fourliberty-show-grid',
+		'fourlibertyLiveEndpoint',
+		array( 'url' => fourliberty_live_state_endpoint() )
+	);
 }
 add_action( 'wp_enqueue_scripts', 'fourliberty_assets' );
 

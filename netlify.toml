@@ -1,0 +1,19 @@
+# Netlify configuration for the 4Liberty live-show poller.
+#
+# This project deploys ONLY the two functions in netlify/functions. There is no
+# site to build — the WordPress theme and plugin in wp-content/ are deployed to
+# GoDaddy by a separate process and are deliberately not published here.
+
+[build]
+  # No build step: the functions are the whole deployable.
+  command = "echo 'No build step — functions only.'"
+  # An empty published directory. Nothing static should ever be served from
+  # this project; the only public surface is /api/live-state.
+  publish = "public"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Schedules are declared in-code (see poll-rumble.mts) so the cadence lives
+# next to the logic it drives.

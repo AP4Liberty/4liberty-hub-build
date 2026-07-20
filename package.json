@@ -1,0 +1,18 @@
+{
+  "name": "4liberty-hub-build",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "4Liberty Network Hub — WordPress theme + plugin, and the Netlify poller that drives live-show detection.",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mts\"",
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0",
+    "@netlify/functions": "^3.0.0"
+  }
+}

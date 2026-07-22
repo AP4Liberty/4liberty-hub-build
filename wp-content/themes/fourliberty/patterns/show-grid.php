@@ -11,15 +11,12 @@
  *              https://4liberty-poller.netlify.app/api/live-state endpoint —
  *              no separate data source, no duplicated logic.
  *
- *              Show blurbs below are honest placeholders, not invented bios —
- *              only facts already confirmed elsewhere in this project are
- *              stated as fact (Wake Up America's weekday-morning slot, from
- *              the header ticker; Freedom Arcade's members-only gate, from
- *              PHASE-2-BUILD-PLAN.md Decision 8). The other four shows need
- *              real one-line descriptions from Austin — replace the
- *              "Watch live on the network." placeholder per show once
- *              provided, ideally via an admin field rather than editing this
- *              file directly (see the task-E note in functions.php).
+ *              Show blurbs are condensed from real copy Austin provided
+ *              (2026-07-22) for WUJC/Culturama/Homeschool Workshop/Cafecito
+ *              Libre, plus facts already confirmed elsewhere in this project
+ *              for Wake Up America (weekday-morning slot, from the header
+ *              ticker) and Freedom Arcade (members-only gate, from
+ *              PHASE-2-BUILD-PLAN.md Decision 8) — none invented.
  *
  * @package fourliberty
  */
@@ -45,25 +42,25 @@ $fourliberty_shows = array(
 	array(
 		'key'    => 'WUJC',
 		'name'   => 'Wake Up Jefferson City',
-		'blurb'  => 'Watch live on the network.',
-		'detail' => '',
+		'blurb'  => 'Brad Boeckmann&rsquo;s live local talk show covering the people, issues, and events shaping Missouri&rsquo;s capital.',
+		'detail' => 'Tuesdays &amp; Thursdays &middot; 6&ndash;7A CT',
 	),
 	array(
 		'key'    => 'CULTURAMA',
 		'name'   => 'Culturama',
-		'blurb'  => 'Watch live on the network.',
+		'blurb'  => 'Daniella Pentsak on culture, politics, and technology &mdash; sharp analysis with a 1950s-inspired, forward-looking take on liberty.',
 		'detail' => '',
 	),
 	array(
 		'key'    => 'HOMESCHOOL',
 		'name'   => 'Homeschool Workshop',
-		'blurb'  => 'Watch live on the network.',
+		'blurb'  => 'Aerospace engineer and homeschool dad of five Brian Peotter on raising free-range kids and navigating homeschooling.',
 		'detail' => '',
 	),
 	array(
 		'key'    => 'CAFECITO',
 		'name'   => 'Cafecito Libre',
-		'blurb'  => 'Watch live on the network.',
+		'blurb'  => 'Bilingual conversation connecting American and Latin American audiences around freedom, entrepreneurship, and the future of the West.',
 		'detail' => '',
 	),
 	array(

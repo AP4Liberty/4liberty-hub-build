@@ -58,7 +58,23 @@
 			: { playlist: [], ads: [], adCadence: { mode: 'every_n_items', n: 4 } };
 
 	var AD_FALLBACK_MAX_MS = 3 * 60 * 1000; // safety backstop if an ad's own 'ended' event never fires
-	var END_BUFFER_MS = 800; // small cushion so the duration-timer fires just after a well-behaved 'ended' event, not before
+	var END_BUFFER_MS = 800; // small cushion for slides (no player event exists — the timer IS the end)
+
+	/**
+	 * The admin-entered duration is a safety net, not a precise cutoff — a
+	 * video that's still genuinely playing when the timer fires would
+	 * otherwise get yanked mid-sentence just because Austin's estimate (or an
+	 * un-detectable Rumble length) ran a little short. Real videos (YouTube
+	 * `ended` / Rumble `videoEnd`, both confirmed reliable — see task C) will
+	 * almost always fire first and win via the debounce in handleEnded();
+	 * this grace is only what's left holding the channel together if an
+	 * event never comes at all. Capped so a wildly wrong duration still
+	 * can't hang the channel for too long. Not used for blog-post slides —
+	 * there's no player event there, so the timer IS the authoritative end.
+	 */
+	function withGrace( seconds ) {
+		return seconds + Math.min( 300, Math.max( 15, seconds * 0.25 ) );
+	}
 
 	var els = null;
 	var state = {
@@ -365,10 +381,20 @@
 						state.muted = true;
 						e.target.playVideo();
 						setFacadeActive( true );
-						var fallbackSeconds = isAd
-							? AD_FALLBACK_MAX_MS / 1000
-							: Math.max( 1, ( Number( item.duration_seconds ) || 0 ) - ( offsetSeconds || 0 ) );
-						scheduleEndFallback( fallbackSeconds );
+						if ( isAd ) {
+							scheduleEndFallback( AD_FALLBACK_MAX_MS / 1000 );
+							return;
+						}
+						// YouTube can report its own real length once loaded —
+						// prefer that over the admin-entered estimate when it's
+						// available, so a slightly-off admin value can't cut a
+						// video short even before withGrace()'s buffer kicks in.
+						var realDuration = e.target.getDuration();
+						var base =
+							realDuration > 0
+								? Math.max( 1, realDuration - ( offsetSeconds || 0 ) )
+								: Math.max( 1, ( Number( item.duration_seconds ) || 0 ) - ( offsetSeconds || 0 ) );
+						scheduleEndFallback( withGrace( base ) );
 					},
 					onStateChange: function ( e ) {
 						if ( e.data === window.YT.PlayerState.ENDED ) {
@@ -407,9 +433,12 @@
 				// No confirmed seek API (see file header) — always starts at
 				// 0:00 regardless of offsetSeconds; the fallback timer below
 				// still tracks the SCHEDULED remaining time, not the full
-				// item length, so the shared channel clock stays honest.
+				// item length, so the shared channel clock stays honest. No
+				// way to read Rumble's real duration either (getCurrentVideo()
+				// doesn't carry one — see task C), so this leans entirely on
+				// the admin-entered length plus withGrace()'s buffer.
 				var fallbackSeconds = Math.max( 1, ( Number( item.duration_seconds ) || 0 ) - ( offsetSeconds || 0 ) );
-				scheduleEndFallback( fallbackSeconds );
+				scheduleEndFallback( withGrace( fallbackSeconds ) );
 				api.on( 'videoEnd', handleEnded );
 			},
 		} );

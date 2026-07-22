@@ -169,7 +169,7 @@ function fourliberty_hub_render_dark_channel() {
 			<?php wp_nonce_field( 'fourliberty_hub_dark_channel_save', 'fourliberty_hub_dark_channel_nonce' ); ?>
 
 			<h2><?php esc_html_e( 'Playlist', 'fourliberty-hub' ); ?></h2>
-			<p style="color:#646970;max-width:700px;"><?php esc_html_e( 'Every item needs a duration in seconds. The channel schedule runs off the clock, not who’s watching, so it needs to know exactly how long each item plays for — same idea as a real TV network’s log.', 'fourliberty-hub' ); ?></p>
+			<p style="color:#646970;max-width:700px;"><?php esc_html_e( 'Every item needs a length (hours/minutes/seconds — set whatever fits: a few seconds, a few hours, anything). The channel schedule runs off the clock, not who’s watching, so it needs to know roughly how long each item runs — same idea as a real TV network’s log. This is a safety net, not a hard cutoff: a video that\'s still playing when it naturally ends always gets to finish and hand off cleanly to the next item. For YouTube, the real length fills in automatically once you enter a video ID — you only need to type a length by hand for Rumble videos and blog posts, or if you want to run just a clip instead of the whole thing.', 'fourliberty-hub' ); ?></p>
 
 			<div id="fourliberty-playlist-rows">
 				<?php foreach ( $playlist as $i => $item ) : ?>
@@ -229,9 +229,12 @@ function fourliberty_hub_render_playlist_row( $item, $recent_posts ) {
 	$type      = $item['type'] ?? 'youtube';
 	$source_id = $item['source_id'] ?? '';
 	$title     = $item['title'] ?? '';
-	$duration  = $item['duration_seconds'] ?? '';
+	$duration  = (int) ( $item['duration_seconds'] ?? 0 );
 	$thumbnail = $item['thumbnail'] ?? '';
 	$post_id   = 'post' === $type ? (int) $source_id : 0;
+	$hh        = (int) floor( $duration / 3600 );
+	$mm        = (int) floor( ( $duration % 3600 ) / 60 );
+	$ss        = $duration % 60;
 	ob_start();
 	?>
 	<div class="fl-hub-row" draggable="true" data-type="<?php echo esc_attr( $type ); ?>" style="background:#fff;border:1px solid #dcdcde;border-radius:4px;margin-bottom:10px;padding:14px 16px;">
@@ -264,10 +267,16 @@ function fourliberty_hub_render_playlist_row( $item, $recent_posts ) {
 							<?php endforeach; ?>
 						</select>
 					</label>
-					<label style="font-size:12px;">
-						<?php esc_html_e( 'Duration (seconds)', 'fourliberty-hub' ); ?>
-						<input type="number" min="1" name="fourliberty_playlist[][duration_seconds]" value="<?php echo esc_attr( $duration ); ?>" style="width:90px;" required />
-					</label>
+					<div class="fl-hub-duration" style="font-size:12px;">
+						<?php esc_html_e( 'Duration', 'fourliberty-hub' ); ?>
+						<span style="display:inline-flex;gap:3px;align-items:center;">
+							<input type="number" min="0" class="fl-hub-hh" value="<?php echo esc_attr( $hh ); ?>" style="width:48px;" title="<?php esc_attr_e( 'Hours', 'fourliberty-hub' ); ?>" /><span style="color:#a7aaad;">h</span>
+							<input type="number" min="0" max="59" class="fl-hub-mm" value="<?php echo esc_attr( $mm ); ?>" style="width:48px;" title="<?php esc_attr_e( 'Minutes', 'fourliberty-hub' ); ?>" /><span style="color:#a7aaad;">m</span>
+							<input type="number" min="0" max="59" class="fl-hub-ss" value="<?php echo esc_attr( $ss ); ?>" style="width:48px;" title="<?php esc_attr_e( 'Seconds', 'fourliberty-hub' ); ?>" /><span style="color:#a7aaad;">s</span>
+						</span>
+						<input type="hidden" name="fourliberty_playlist[][duration_seconds]" class="fl-hub-duration-total" value="<?php echo esc_attr( $duration ); ?>" />
+						<span class="fl-hub-duration__hint" style="color:#646970;margin-left:4px;"></span>
+					</div>
 					<button type="button" class="button-link-delete fl-hub-remove-row" style="margin-left:auto;color:#b32d2e;"><?php esc_html_e( 'Remove', 'fourliberty-hub' ); ?></button>
 				</div>
 				<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;max-width:640px;">

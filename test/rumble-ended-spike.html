@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<!--
+  Phase 2, task C — Rumble player "ended"-event spike.
+
+  PHASE-0-FINDINGS.md flagged this as unverified (Rumble's dev docs host,
+  player.rumble.com, refuses connections to automated fetchers — confirmed
+  still true during this spike too). This page independently confirms the
+  event using Rumble's own documented JS embed API (the loader snippet below
+  is the exact one Rumble's site generates from a video's Share -> Embed ->
+  API option — sourced from a public Rumble-authored JSFiddle example, since
+  the docs host itself is unreachable).
+
+  Result (recorded 2026-07-21, see PHASE-2-BUILD-PLAN.md task C for the
+  narrative writeup): loaded a real public Rumble video
+  (rumble.com/v785k1o, embed id v75yw1g, 1:33 long) in a real browser,
+  let it play to completion, and watched the console. Confirmed events, in
+  firing order: "loadVideo" (once, on ready) -> "play" (on playback start)
+  -> "videoEnd" (once, when the video finishes).
+
+  CONCLUSION: the end-of-playback event exists and fires reliably. Its name
+  is "videoEnd", NOT "ended" (that was always just an assumption carried
+  over from the HTML5 <video> element / YouTube IFrame API naming, which
+  Rumble's API does not follow). The Dark Channel playout engine (task F)
+  should subscribe to "videoEnd" for tight transitions on Rumble items, with
+  the clock-driven duration timer (Decision 4) kept as the authoritative
+  fallback/backstop exactly as planned — a name-only correction, not a
+  design change.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Rumble ended-event spike</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; background: #111; color: #eee; padding: 20px; }
+  #log { background: #000; border: 1px solid #444; padding: 12px; margin-top: 16px; height: 240px; overflow-y: auto; white-space: pre-wrap; font: 13px/1.4 ui-monospace, monospace; }
+  .ev-loadVideo { color: #8ab4f8; }
+  .ev-play { color: #81c995; }
+  .ev-pause { color: #fdd663; }
+  .ev-videoEnd { color: #f28b82; font-weight: 700; }
+  #video { width: 480px; max-width: 100%; }
+</style>
+</head>
+<body>
+<h1>Rumble player "ended"-event spike</h1>
+<p>Test video: <a href="https://rumble.com/v785k1o-this-is-a-test.-1-minute-33-seconds.html" style="color:#8ab4f8">rumble.com/v785k1o</a> (embed id <code>v75yw1g</code>, 1:33). Loads automatically below; watch the log for every player event fired, especially at the end of playback.</p>
+<div id="video"></div>
+<div id="log"></div>
+<script>
+  var logEl = document.getElementById('log');
+  function log(evName, detail) {
+    var line = document.createElement('div');
+    line.className = 'ev-' + evName;
+    var t = new Date().toISOString().split('T')[1].replace('Z', '');
+    line.textContent = '[' + t + '] ' + evName + (detail ? ' ' + JSON.stringify(detail) : '');
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+    console.log('[rumble-spike]', evName, detail || '');
+  }
+
+  var videoId = 'v75yw1g';
+
+  // Rumble's own embed-JS loader snippet (unmodified) — dynamically injects
+  // https://rumble.com/embedJS/<id>/ with the config passed as ?args=.
+  !function(r,u,m,b,l,e){r._Rumble=b,r[b]||(r[b]=function(){(r[b]._=r[b]._||[]).push(arguments);if(r[b]._.length==1){l=u.createElement(m),e=u.getElementsByTagName(m)[0],l.async=1,l.src="https://rumble.com/embedJS/"+videoId+(arguments[1].video?'.'+arguments[1].video:'')+"/?url="+encodeURIComponent(location.href)+"&args="+encodeURIComponent(JSON.stringify([].slice.apply(arguments))),e.parentNode.insertBefore(l,e)}})}(window, document, "script", "Rumble");
+
+  var config = {
+    video: videoId,
+    div: "video",
+    rel: 0,
+    api: function (api) {
+      log('api-ready', { currentVideo: (api.getCurrentVideo && api.getCurrentVideo()) || null });
+
+      api.on('loadVideo', function () { log('loadVideo'); });
+      api.on('play', function () { log('play'); });
+      api.on('pause', function () { log('pause'); });
+      api.on('videoEnd', function () {
+        log('videoEnd');
+        log('RESULT', 'videoEnd fired — end-of-playback event CONFIRMED.');
+      });
+    }
+  };
+
+  Rumble("play", config);
+</script>
+</body>
+</html>

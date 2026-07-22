@@ -90,6 +90,20 @@ function fourliberty_assets() {
 		array( 'url' => fourliberty_live_state_endpoint() )
 	);
 
+	// Phase 2 Dark Channel playout engine. Depends on fourliberty-live-state
+	// so its DOMContentLoaded listener attaches after live-state.js's does —
+	// it needs window.FLHub.liveState to exist by the time it checks
+	// isLive() at init. No-ops immediately if [data-fl="hero-player"] isn't
+	// on the page or nothing's been programmed yet, same pattern as above.
+	wp_enqueue_script(
+		'fourliberty-dark-channel',
+		get_theme_file_uri( 'assets/js/dark-channel.js' ),
+		array( 'fourliberty-live-state' ),
+		filemtime( get_theme_file_path( 'assets/js/dark-channel.js' ) ),
+		true
+	);
+	wp_localize_script( 'fourliberty-dark-channel', 'fourlibertyDarkChannel', fourliberty_dark_channel_config() );
+
 	// /shows/ page live badges — same no-op-if-absent pattern, same endpoint.
 	wp_enqueue_script(
 		'fourliberty-show-grid',
@@ -150,6 +164,28 @@ function fourliberty_live_shows_config() {
 	);
 
 	$stored = get_option( 'fourliberty_live_shows_config' );
+	return is_array( $stored ) ? $stored : $defaults;
+}
+
+/**
+ * Dark Channel playlist/ads/cadence config consumed by
+ * assets/js/dark-channel.js. This is the seam Phase 2 task F's admin panel
+ * (includes/settings-dark-channel.php) writes to via
+ * update_option( 'fourliberty_dark_channel_config', ... ) — same pattern as
+ * fourliberty_live_shows_config() above. Defaults to an empty playlist:
+ * dark-channel.js treats that as "nothing programmed yet" and stays out of
+ * the way entirely (Decision 7 — no facade is safer than a broken one),
+ * leaving the homepage exactly as it was before this phase until Austin
+ * builds a playlist.
+ */
+function fourliberty_dark_channel_config() {
+	$defaults = array(
+		'playlist'  => array(),
+		'ads'       => array(),
+		'adCadence' => array( 'mode' => 'every_n_items', 'n' => 4, 'm' => 20 ),
+	);
+
+	$stored = get_option( 'fourliberty_dark_channel_config' );
 	return is_array( $stored ) ? $stored : $defaults;
 }
 

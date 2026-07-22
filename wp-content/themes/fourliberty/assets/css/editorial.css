@@ -421,6 +421,134 @@ button.fl-mini-live {
 .fl-live-banner__dismiss { background: transparent; color: var(--wp--preset--color--muted); font-size: .95rem; padding: 4px 8px; }
 .fl-live-banner__dismiss:hover { color: var(--wp--preset--color--headline); }
 
+/* ---------- Dark Channel (Phase 2, task F) ---------- */
+/* assets/js/dark-channel.js renders entirely inside the same .fl-player
+   element live-state.js owns, toggling .is-dark-channel while no show is
+   live. Hide the Phase-1 live-only chrome underneath so the two facades
+   never show at once — mirrors how .is-live/.is-playing already gate that
+   chrome above. */
+.fl-player.is-dark-channel .fl-badge-live,
+.fl-player.is-dark-channel .fl-viewers,
+.fl-player.is-dark-channel > .fl-play,
+.fl-player.is-dark-channel > .fl-player-meta { display: none; }
+
+.fl-dark-channel { position: absolute; inset: 0; z-index: 2; }
+.fl-dark-channel__stage { position: absolute; inset: 0; }
+.fl-dark-channel__poster {
+	position: absolute;
+	inset: 0;
+	background-size: cover;
+	background-position: center;
+	background-color: #171019;
+}
+.fl-dark-channel__play { z-index: 3; }
+.fl-dark-channel__frame {
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+}
+.fl-dark-channel__frame iframe,
+.fl-dark-channel__frame > div,
+.fl-dark-channel__frame > div > iframe {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	border: 0;
+}
+.fl-dark-channel__mute {
+	position: absolute;
+	top: 16px;
+	right: 16px;
+	z-index: 4;
+	font-family: var(--wp--preset--font-family--mono);
+	font-size: .68rem;
+	letter-spacing: .04em;
+	background: rgba(9,7,12,.6);
+	color: #fff;
+	border: 1px solid var(--wp--preset--color--line-bright);
+	border-radius: var(--fl-radius-pill);
+	padding: 6px 12px;
+	cursor: pointer;
+}
+.fl-dark-channel__meta {
+	position: absolute;
+	left: 20px;
+	right: 20px;
+	bottom: 18px;
+	z-index: 3;
+	pointer-events: none;
+}
+.fl-dark-channel__badge {
+	font-family: var(--wp--preset--font-family--mono);
+	font-size: .64rem;
+	letter-spacing: .18em;
+	text-transform: uppercase;
+	color: var(--wp--preset--color--gold);
+	margin-bottom: 8px;
+}
+.fl-dark-channel__title {
+	font-family: var(--wp--preset--font-family--serif);
+	font-weight: 700;
+	color: #fff;
+	font-size: clamp(1.3rem, 2.6vw, 1.9rem);
+	line-height: 1.1;
+	margin: 0;
+	text-wrap: balance;
+	max-width: 80%;
+}
+/* Once playback actually starts (dark-channel.js toggles .is-playing on
+   .fl-dark-channel, same trigger as setFacadeActive(true)), get the poster
+   and text out of the way of the video — same idea as .fl-player.is-playing
+   above for the live case. */
+.fl-dark-channel.is-playing .fl-dark-channel__poster,
+.fl-dark-channel.is-playing .fl-dark-channel__meta,
+.fl-dark-channel.is-playing .fl-dark-channel__play { display: none; }
+
+/* Blog-post playlist items render as a readable card rather than a video —
+   never fullscreen/autoplay a "video" that doesn't exist. */
+.fl-dark-channel__slide {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--wp--preset--color--surface);
+}
+.fl-dark-channel__slide-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 10px;
+	text-align: center;
+	padding: 24px;
+	text-decoration: none;
+	max-width: 420px;
+}
+.fl-dark-channel__slide-card img {
+	width: 100%;
+	max-width: 260px;
+	aspect-ratio: 16/9;
+	object-fit: cover;
+	border-radius: 10px;
+}
+.fl-dark-channel__slide-card h3 {
+	font-family: var(--wp--preset--font-family--serif);
+	color: var(--wp--preset--color--headline);
+	font-size: clamp(1.1rem, 2.2vw, 1.4rem);
+	margin: 0;
+}
+.fl-dark-channel__slide-cta {
+	font-family: var(--wp--preset--font-family--mono);
+	font-size: .7rem;
+	letter-spacing: .08em;
+	text-transform: uppercase;
+	color: var(--wp--preset--color--gold);
+}
+
+@media (max-width: 560px) {
+	.fl-dark-channel__title { font-size: 1.15rem; }
+	.fl-dark-channel__mute { top: 10px; right: 10px; padding: 5px 10px; font-size: .62rem; }
+}
+
 /* ---------- Chat + tip rail ---------- */
 .fl-rail {
 	background: var(--wp--preset--color--surface);

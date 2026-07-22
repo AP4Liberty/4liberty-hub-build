@@ -77,15 +77,33 @@
 		channels: [],
 	};
 
-	// Public hook for the future Dark Channel playout engine (task 17) to call
-	// once it starts/stops playing a programmed item, so a show going live
-	// mid-watch triggers the banner (Decision 6) instead of yanking the video.
+	// Public hooks for the Dark Channel playout engine (task F,
+	// assets/js/dark-channel.js) to plug into, so the two features can stay
+	// decoupled (neither script needs to know the other exists):
+	//  - setFacadeActive(): Dark Channel calls this when it starts/stops
+	//    actually playing a programmed item, so a show going live mid-watch
+	//    triggers the banner (Decision 6) instead of yanking the video.
+	//  - isLive(): a synchronous read of the current hero state, for Dark
+	//    Channel's own init (before its first "fl:hero-state" event arrives).
+	// The "fl:hero-state" DOM event (dispatched below, only on an actual
+	// dark<->live transition, never on a same-state poll) is Dark Channel's
+	// cue to take over the hero slot when dark, and get out of the way the
+	// instant a show goes live.
 	window.FLHub = window.FLHub || {};
 	window.FLHub.liveState = {
 		setFacadeActive: function ( active ) {
 			state.heroFacadeActive = !! active;
 		},
+		isLive: function () {
+			return state.heroLive;
+		},
 	};
+
+	function dispatchHeroStateChange() {
+		document.dispatchEvent(
+			new CustomEvent( 'fl:hero-state', { detail: { live: state.heroLive, key: state.heroKey } } )
+		);
+	}
 
 	function orderIndex( key ) {
 		var i = CONFIG.order ? CONFIG.order.indexOf( key ) : -1;
@@ -94,6 +112,16 @@
 
 	function showConfig( key ) {
 		return ( CONFIG.shows && CONFIG.shows[ key ] ) || { name: key };
+	}
+
+	/**
+	 * Task E's admin panel can turn a channel off ("included in homepage
+	 * rotation" unchecked) without deleting its config — it just stops
+	 * counting as live here. Missing/unset defaults to enabled so existing
+	 * configs (and the hardcoded DEFAULT_CONFIG above) keep working as-is.
+	 */
+	function isEnabled( key ) {
+		return showConfig( key ).enabled !== false;
 	}
 
 	function findChannel( key ) {
@@ -309,10 +337,13 @@
 
 		if ( ! opts.silent ) {
 			removeBanner();
+			dispatchHeroStateChange();
 		}
 	}
 
 	function goDark() {
+		var wasLive = state.heroLive;
+
 		state.heroKey = null;
 		state.heroLive = false;
 		state.heroGated = false;
@@ -333,6 +364,15 @@
 		var hostEl = els.player.querySelector( '.fl-player-meta__host' );
 		if ( hostEl ) {
 			hostEl.textContent = defaultCopy.host;
+		}
+
+		// Dispatch even on the very first (already-dark) load, not just real
+		// live->dark transitions — Dark Channel's own activate() is written
+		// to be idempotent, and this guarantees it always gets at least one
+		// event to react to instead of depending on a synchronous isLive()
+		// read racing its own init.
+		if ( wasLive || ! state.lastGoodFetch ) {
+			dispatchHeroStateChange();
 		}
 	}
 
@@ -411,7 +451,7 @@
 		state.channels = payload.channels || [];
 
 		var live = state.channels.filter( function ( c ) {
-			return c.is_live;
+			return c.is_live && isEnabled( c.key );
 		} );
 		var nextKey = pickHero( live );
 

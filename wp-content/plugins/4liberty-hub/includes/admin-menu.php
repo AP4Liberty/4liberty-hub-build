@@ -81,12 +81,12 @@ function fourliberty_hub_render_overview() {
 				<tr>
 					<td><?php esc_html_e( 'Live Shows', 'fourliberty-hub' ); ?></td>
 					<td><?php esc_html_e( 'Which Rumble channels count as network shows, and hero priority when more than one is live.', 'fourliberty-hub' ); ?></td>
-					<td><?php esc_html_e( 'Phase 2', 'fourliberty-hub' ); ?></td>
+					<td><?php esc_html_e( 'Live', 'fourliberty-hub' ); ?></td>
 				</tr>
 				<tr>
 					<td><?php esc_html_e( 'Dark Channel', 'fourliberty-hub' ); ?></td>
 					<td><?php esc_html_e( 'The always-on playlist (YouTube/Rumble/blog) and ad-break cadence for when no show is live.', 'fourliberty-hub' ); ?></td>
-					<td><?php esc_html_e( 'Phase 2', 'fourliberty-hub' ); ?></td>
+					<td><?php esc_html_e( 'Live', 'fourliberty-hub' ); ?></td>
 				</tr>
 				<tr>
 					<td><?php esc_html_e( 'Chat & Tips', 'fourliberty-hub' ); ?></td>

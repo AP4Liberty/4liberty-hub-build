@@ -8,11 +8,30 @@
 ( function () {
 	'use strict';
 
-	// Mobile nav: the block Navigation menu already ships its own overlay
-	// toggle, so this only handles the hero "also live" row collapsing to a
-	// horizontal scroller on very small screens — a class hook, no logic yet.
 	document.addEventListener( 'DOMContentLoaded', function () {
 		var root = document.documentElement;
 		root.classList.add( 'fl-js' );
+
+		// Mobile nav toggle for the static header menu (2026-07-23). The header
+		// used to use a wp:navigation block with its own overlay toggle, but
+		// that block rendered the whole masthead empty on this install (see
+		// parts/header.html), so the nav is now plain HTML and owns its own
+		// hamburger. No-ops if the header isn't on the page.
+		var toggle = document.querySelector( '[data-fl="nav-toggle"]' );
+		var menu = document.querySelector( '[data-fl="nav-menu"]' );
+		if ( toggle && menu ) {
+			toggle.addEventListener( 'click', function () {
+				var open = menu.classList.toggle( 'is-open' );
+				toggle.setAttribute( 'aria-expanded', open ? 'true' : 'false' );
+			} );
+			// Tapping a link closes the dropdown (same-page anchors, or just so
+			// it isn't left hanging open after navigating).
+			menu.addEventListener( 'click', function ( e ) {
+				if ( e.target.closest( 'a' ) ) {
+					menu.classList.remove( 'is-open' );
+					toggle.setAttribute( 'aria-expanded', 'false' );
+				}
+			} );
+		}
 	} );
 } )();

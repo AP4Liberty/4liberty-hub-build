@@ -22,11 +22,68 @@
 		}
 	}
 
+	/**
+	 * Cover-image picker (2026-07-24) — same wp.media flow as the Shop Ad and
+	 * Dark Channel image-ad pickers. Delegated on the whole document (rows
+	 * here are server-rendered, never cloned, but delegation is still the
+	 * simplest way to cover every row without wiring each one individually).
+	 */
+	function wireCoverImagePicker() {
+		document.addEventListener( 'click', function ( e ) {
+			var chooseBtn = e.target.closest( '.fl-hub-choose-cover' );
+			var removeBtn = e.target.closest( '.fl-hub-remove-cover' );
+			if ( ! chooseBtn && ! removeBtn ) {
+				return;
+			}
+			e.preventDefault();
+			var row = ( chooseBtn || removeBtn ).closest( '.fl-hub-row' );
+			if ( ! row ) {
+				return;
+			}
+			var input = row.querySelector( '.fl-hub-cover-url' );
+			var preview = row.querySelector( '.fl-hub-cover-preview' );
+			var removeLink = row.querySelector( '.fl-hub-remove-cover' );
+
+			function setCover( url ) {
+				if ( input ) {
+					input.value = url || '';
+				}
+				if ( preview ) {
+					preview.style.backgroundImage = url ? 'url(' + url + ')' : '';
+				}
+				if ( removeLink ) {
+					removeLink.style.display = url ? '' : 'none';
+				}
+			}
+
+			if ( removeBtn ) {
+				setCover( '' );
+				return;
+			}
+			if ( ! window.wp || ! wp.media ) {
+				return;
+			}
+			var frame = wp.media( {
+				title: 'Choose a cover image',
+				button: { text: 'Use this image' },
+				multiple: false,
+			} );
+			frame.on( 'select', function () {
+				var attachment = frame.state().get( 'selection' ).first().toJSON();
+				var url = ( attachment.sizes && attachment.sizes.large ) ? attachment.sizes.large.url : attachment.url;
+				setCover( url );
+			} );
+			frame.open();
+		} );
+	}
+
 	function init() {
 		var container = document.getElementById( 'fourliberty-live-shows-rows' );
 		if ( ! container ) {
 			return;
 		}
+
+		wireCoverImagePicker();
 
 		var dragging = null;
 

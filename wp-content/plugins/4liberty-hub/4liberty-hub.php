@@ -32,3 +32,4 @@ require_once FOURLIBERTY_HUB_PATH . 'includes/settings-live-shows.php';
 require_once FOURLIBERTY_HUB_PATH . 'includes/settings-dark-channel.php';
 require_once FOURLIBERTY_HUB_PATH . 'includes/settings-chat-tips.php';
 require_once FOURLIBERTY_HUB_PATH . 'includes/settings-product-push.php';
+require_once FOURLIBERTY_HUB_PATH . 'includes/settings-shop-ad.php';

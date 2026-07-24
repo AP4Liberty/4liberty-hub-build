@@ -90,6 +90,25 @@ function fourliberty_assets() {
 		array( 'url' => fourliberty_live_state_endpoint() )
 	);
 
+	// Homepage/masthead "On Air" ticker (2026-07-23). Depends on
+	// fourliberty-live-state purely for load order — it needs
+	// window.fourlibertyLiveShows (localized above) to already exist, and
+	// polls /api/live-state independently, same pattern as
+	// fourliberty-rumble-mirror below. No-ops immediately if the ticker
+	// markup (parts/header.html) isn't on the page.
+	wp_enqueue_script(
+		'fourliberty-ticker',
+		get_theme_file_uri( 'assets/js/ticker.js' ),
+		array( 'fourliberty-live-state' ),
+		filemtime( get_theme_file_path( 'assets/js/ticker.js' ) ),
+		true
+	);
+	wp_localize_script(
+		'fourliberty-ticker',
+		'fourlibertyLiveEndpoint',
+		array( 'url' => fourliberty_live_state_endpoint() )
+	);
+
 	// Phase 2 Dark Channel playout engine. Depends on fourliberty-live-state
 	// so its DOMContentLoaded listener attaches after live-state.js's does —
 	// it needs window.FLHub.liveState to exist by the time it checks
@@ -105,10 +124,14 @@ function fourliberty_assets() {
 	wp_localize_script( 'fourliberty-dark-channel', 'fourlibertyDarkChannel', fourliberty_dark_channel_config() );
 
 	// /shows/ page live badges — same no-op-if-absent pattern, same endpoint.
+	// Depends on fourliberty-live-state so window.fourlibertyLiveShows (each
+	// show's gatedUrl/Rumble channel, 2026-07-23) is guaranteed defined by the
+	// time this reads it for the not-live card destination — an explicit
+	// dependency instead of relying on incidental enqueue order.
 	wp_enqueue_script(
 		'fourliberty-show-grid',
 		get_theme_file_uri( 'assets/js/show-grid.js' ),
-		array(),
+		array( 'fourliberty-live-state' ),
 		filemtime( get_theme_file_path( 'assets/js/show-grid.js' ) ),
 		true
 	);
@@ -117,8 +140,134 @@ function fourliberty_assets() {
 		'fourlibertyLiveEndpoint',
 		array( 'url' => fourliberty_live_state_endpoint() )
 	);
+
+	// Phase 3 Rumble chat, merged into the on-site feed (2026-07-23). Depends
+	// on fourliberty-live-state so it can listen for the "fl:hero-state"
+	// event that script dispatches (see live-state.js) — it never re-derives
+	// which channel is hero itself. Also depends on fourliberty-chat, whose
+	// appendExternalMessage() hook it hands new Rumble messages to — same
+	// load-order reasoning as fourliberty-tips/fourliberty-account below.
+	// Same no-op-if-absent pattern: does nothing unless [data-fl="chat-feed"]
+	// is on the page.
+	wp_enqueue_script(
+		'fourliberty-rumble-mirror',
+		get_theme_file_uri( 'assets/js/rumble-mirror.js' ),
+		array( 'fourliberty-live-state', 'fourliberty-chat' ),
+		filemtime( get_theme_file_path( 'assets/js/rumble-mirror.js' ) ),
+		true
+	);
+	wp_localize_script(
+		'fourliberty-rumble-mirror',
+		'fourlibertyLiveEndpoint',
+		array( 'url' => fourliberty_live_state_endpoint() )
+	);
+	wp_localize_script( 'fourliberty-rumble-mirror', 'fourlibertyChatTips', fourliberty_chat_tips_config() );
+
+	// Phase 3 on-site chat. No-ops immediately if [data-fl="chat-rail"] isn't
+	// on the page (same pattern as every other script here). Uses dynamic
+	// import() internally to load the Stream Chat client from a CDN — no
+	// bundler in this theme, so a classic (non-module) script that
+	// import()s at runtime is the load-bearing seam, not a <script
+	// type="module"> tag.
+	wp_enqueue_script(
+		'fourliberty-chat',
+		get_theme_file_uri( 'assets/js/chat.js' ),
+		array(),
+		filemtime( get_theme_file_path( 'assets/js/chat.js' ) ),
+		true
+	);
+	wp_localize_script( 'fourliberty-chat', 'fourlibertyChatTips', fourliberty_chat_tips_config() );
+	wp_localize_script(
+		'fourliberty-chat',
+		'fourlibertyChatTokenEndpoint',
+		array( 'url' => fourliberty_chat_token_endpoint() )
+	);
+
+	// Phase 3 "tip the show". No-ops immediately if [data-fl="tip-bar"]
+	// isn't on the page. Depends on fourliberty-chat so it can read
+	// window.FLHub.chat.getDisplayName() (reuse a name already set in
+	// chat) — chat.js defines that hook unconditionally at parse time, not
+	// only once connected, so the dependency only needs correct load
+	// order, not a runtime race.
+	wp_enqueue_script(
+		'fourliberty-tips',
+		get_theme_file_uri( 'assets/js/tips.js' ),
+		array( 'fourliberty-chat' ),
+		filemtime( get_theme_file_path( 'assets/js/tips.js' ) ),
+		true
+	);
+	wp_localize_script( 'fourliberty-tips', 'fourlibertyChatTips', fourliberty_chat_tips_config() );
+	wp_localize_script(
+		'fourliberty-tips',
+		'fourlibertyTipCreateEndpoint',
+		array( 'url' => fourliberty_tip_create_endpoint() )
+	);
+	wp_localize_script(
+		'fourliberty-tips',
+		'fourlibertyTipRepeatEndpoint',
+		array( 'url' => fourliberty_tip_repeat_endpoint() )
+	);
+
+	// Phase 3 light accounts (email magic link). No-ops immediately if
+	// [data-fl="chat-rail"] isn't on the page. Depends on fourliberty-chat
+	// for the same getDisplayName() hook tips.js uses — carries a visitor's
+	// typed chat name forward into their account on signup.
+	wp_enqueue_script(
+		'fourliberty-account',
+		get_theme_file_uri( 'assets/js/account.js' ),
+		array( 'fourliberty-chat' ),
+		filemtime( get_theme_file_path( 'assets/js/account.js' ) ),
+		true
+	);
+	wp_localize_script(
+		'fourliberty-account',
+		'fourlibertyAuthRequestEndpoint',
+		array( 'url' => fourliberty_auth_request_endpoint() )
+	);
+	wp_localize_script(
+		'fourliberty-account',
+		'fourlibertyAuthVerifyEndpoint',
+		array( 'url' => fourliberty_auth_verify_endpoint() )
+	);
+
+	// "The Daily Brief" newsletter signup. No-ops immediately if
+	// [data-fl="newsletter-form"] isn't on the page. Independent of the
+	// chat/tips/account scripts — no shared state needed.
+	wp_enqueue_script(
+		'fourliberty-newsletter',
+		get_theme_file_uri( 'assets/js/newsletter.js' ),
+		array(),
+		filemtime( get_theme_file_path( 'assets/js/newsletter.js' ) ),
+		true
+	);
+	wp_localize_script(
+		'fourliberty-newsletter',
+		'fourlibertyNewsletterEndpoint',
+		array( 'url' => fourliberty_newsletter_subscribe_endpoint() )
+	);
+
+	// Off-air "When we're live" schedule panel (2026-07-23). Swaps the chat
+	// rail for a show-schedule panel whenever nothing's live — no-ops if the
+	// schedule-rail markup (patterns/hero-live.php) isn't on the page.
+	// Depends on fourliberty-live-state for window.FLHub + the localized
+	// window.fourlibertyLiveShows it reads, and on fourliberty-newsletter so
+	// window.fourlibertyNewsletterEndpoint (its "notify me" box) is defined.
+	wp_enqueue_script(
+		'fourliberty-schedule-rail',
+		get_theme_file_uri( 'assets/js/schedule-rail.js' ),
+		array( 'fourliberty-live-state', 'fourliberty-newsletter' ),
+		filemtime( get_theme_file_path( 'assets/js/schedule-rail.js' ) ),
+		true
+	);
 }
 add_action( 'wp_enqueue_scripts', 'fourliberty_assets' );
+
+/** The newsletter-subscribe Netlify function's public endpoint — same backend site. */
+function fourliberty_newsletter_subscribe_endpoint() {
+	return defined( 'FOURLIBERTY_NEWSLETTER_SUBSCRIBE_ENDPOINT' )
+		? FOURLIBERTY_NEWSLETTER_SUBSCRIBE_ENDPOINT
+		: 'https://4liberty-poller.netlify.app/api/newsletter-subscribe';
+}
 
 /**
  * The Netlify poller's public endpoint. A constant (not hardcoded in JS) so
@@ -130,6 +279,135 @@ function fourliberty_live_state_endpoint() {
 		? FOURLIBERTY_LIVE_STATE_ENDPOINT
 		: 'https://4liberty-poller.netlify.app/api/live-state';
 }
+
+/**
+ * The chat-token Netlify function's public endpoint — same backend site as
+ * the poller (see PHASE-3-BUILD-PLAN.md Decision 1: one Netlify project for
+ * everything secret-touching), a different function within it.
+ */
+function fourliberty_chat_token_endpoint() {
+	return defined( 'FOURLIBERTY_CHAT_TOKEN_ENDPOINT' )
+		? FOURLIBERTY_CHAT_TOKEN_ENDPOINT
+		: 'https://4liberty-poller.netlify.app/api/chat-token';
+}
+
+/** The tip-create Netlify function's public endpoint — same backend site. */
+function fourliberty_tip_create_endpoint() {
+	return defined( 'FOURLIBERTY_TIP_CREATE_ENDPOINT' )
+		? FOURLIBERTY_TIP_CREATE_ENDPOINT
+		: 'https://4liberty-poller.netlify.app/api/tip-create';
+}
+
+/**
+ * The tip-repeat Netlify function's public endpoint — same backend site.
+ * Task F's one-tap saved-card charge, a separate function from tip-create.
+ */
+function fourliberty_tip_repeat_endpoint() {
+	return defined( 'FOURLIBERTY_TIP_REPEAT_ENDPOINT' )
+		? FOURLIBERTY_TIP_REPEAT_ENDPOINT
+		: 'https://4liberty-poller.netlify.app/api/tip-repeat';
+}
+
+/** The config-status Netlify function's public endpoint — same backend site. */
+function fourliberty_config_status_endpoint() {
+	return defined( 'FOURLIBERTY_CONFIG_STATUS_ENDPOINT' )
+		? FOURLIBERTY_CONFIG_STATUS_ENDPOINT
+		: 'https://4liberty-poller.netlify.app/api/config-status';
+}
+
+/** The auth-request Netlify function's public endpoint — same backend site. */
+function fourliberty_auth_request_endpoint() {
+	return defined( 'FOURLIBERTY_AUTH_REQUEST_ENDPOINT' )
+		? FOURLIBERTY_AUTH_REQUEST_ENDPOINT
+		: 'https://4liberty-poller.netlify.app/api/auth-request';
+}
+
+/** The auth-verify Netlify function's public endpoint — same backend site. */
+function fourliberty_auth_verify_endpoint() {
+	return defined( 'FOURLIBERTY_AUTH_VERIFY_ENDPOINT' )
+		? FOURLIBERTY_AUTH_VERIFY_ENDPOINT
+		: 'https://4liberty-poller.netlify.app/api/auth-verify';
+}
+
+/**
+ * Chat & Tips config consumed by assets/js/chat.js, tips.js, and
+ * rumble-mirror.js. This is the seam Phase 3 task G's admin panel ("Chat &
+ * Tips" settings, includes/settings-chat-tips.php) writes to via
+ * update_option( 'fourliberty_chat_tips_config', ... ) — same pattern as
+ * fourliberty_live_shows_config() below.
+ *
+ * `mode` and the tip bounds are enforced SERVER-SIDE on Netlify (a
+ * front-end-only toggle could be bypassed from the browser) — see
+ * fourliberty_register_rest_routes() below, which exposes exactly these two
+ * fields at a public REST route netlify/functions/poll-wp-config.mts polls
+ * every minute, and netlify/lib/config.mts, which is what chat-token.mts and
+ * tip-create.mts actually read. Everything else here is browser-only and
+ * takes effect the next page load — no bridge needed.
+ *
+ * squareApplicationId/squareLocationId/squareEnvironment are all
+ * PUBLISHABLE (safe in the browser by design — see PHASE-3-BUILD-PLAN.md's
+ * publishable-vs-secret split). The actual money-moving secret
+ * (SQUARE_ACCESS_TOKEN) lives only in Netlify, never here. Defaults below
+ * are the real Sandbox app Task A created ("4Liberty Hub"), the same
+ * pattern fourliberty_live_shows_config() uses for the real Rumble roster.
+ */
+function fourliberty_chat_tips_config() {
+	$defaults = array(
+		'chatEnabled'         => true,
+		'mode'                => 'open',
+		'tipPresets'          => array( 5, 17.76, 50 ),
+		'tipMinDollars'       => 1,
+		'tipMaxDollars'       => 500,
+		'hideBotDefault'      => true,
+		'moderationNotes'     => '',
+		'squareApplicationId' => 'sandbox-sq0idb-i1ElCdQZdIJIwzLoN5HREA',
+		'squareLocationId'    => 'LNTAXJD5J1AZD',
+		'squareEnvironment'   => 'sandbox',
+	);
+
+	$stored = get_option( 'fourliberty_chat_tips_config' );
+	return is_array( $stored ) ? wp_parse_args( $stored, $defaults ) : $defaults;
+}
+
+/**
+ * Public, read-only REST route exposing ONLY the two Chat & Tips fields
+ * Netlify must enforce server-side (see fourliberty_chat_tips_config()'s
+ * doc comment) — deliberately not the whole config. Nothing returned here
+ * is sensitive, so this needs no authentication, matching the same
+ * "public by design" precedent as the Netlify poller's own
+ * /api/live-state. netlify/functions/poll-wp-config.mts polls this every
+ * minute; chat-token.mts / tip-create.mts never call it directly.
+ */
+function fourliberty_register_rest_routes() {
+	register_rest_route(
+		'fourliberty/v1',
+		'/server-config',
+		array(
+			'methods'             => 'GET',
+			'permission_callback' => '__return_true',
+			'callback'            => function () {
+				$config   = fourliberty_chat_tips_config();
+				$response = new WP_REST_Response(
+					array(
+						'mode'        => ( 'gated' === $config['mode'] ) ? 'gated' : 'open',
+						'tipMinCents' => (int) round( floatval( $config['tipMinDollars'] ) * 100 ),
+						'tipMaxCents' => (int) round( floatval( $config['tipMaxDollars'] ) * 100 ),
+					)
+				);
+				// Discovered during Task H: GoDaddy's own gateway cache was
+				// observed serving a stale response for this exact route (a
+				// mode flip took much longer than the "about a minute" the
+				// settings screen promises). Asks the gateway not to cache a
+				// route whose whole point is reflecting the LATEST admin
+				// setting — may not be fully honored by every gateway, but
+				// costs nothing to set correctly.
+				$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+				return $response;
+			},
+		)
+	);
+}
+add_action( 'rest_api_init', 'fourliberty_register_rest_routes' );
 
 /**
  * Live-show display config consumed by assets/js/live-state.js: display
@@ -152,11 +430,12 @@ function fourliberty_live_shows_config() {
 			'WUA'        => array(
 				'name'            => 'Wake Up America',
 				'host'            => 'with Austin Petersen',
+				'schedule'        => 'Weekday mornings · 7–9A CT',
 				'gatedTitleMatch' => 'Freedom Arcade',
 				'gatedLabel'      => 'Subscribe on Rumble to watch live →',
 				'gatedUrl'        => 'https://rumble.com/c/AP4Liberty',
 			),
-			'WUJC'       => array( 'name' => 'Wake Up Jefferson City' ),
+			'WUJC'       => array( 'name' => 'Wake Up Jefferson City', 'schedule' => 'Tuesdays & Thursdays · 6–7A CT' ),
 			'CULTURAMA'  => array( 'name' => 'Culturama' ),
 			'HOMESCHOOL' => array( 'name' => 'Homeschool Workshop' ),
 			'CAFECITO'   => array( 'name' => 'Cafecito Libre' ),
@@ -183,9 +462,35 @@ function fourliberty_dark_channel_config() {
 		'playlist'  => array(),
 		'ads'       => array(),
 		'adCadence' => array( 'mode' => 'every_n_items', 'n' => 4, 'm' => 20 ),
+		'display'   => array( 'mode' => 'slide', 'intervalSeconds' => 8 ),
 	);
 
 	$stored = get_option( 'fourliberty_dark_channel_config' );
+	if ( ! is_array( $stored ) ) {
+		return $defaults;
+	}
+	// Older saved configs predate the slider (2026-07-23) and have no
+	// `display` key — fill it so dark-channel.js always has a mode/interval.
+	if ( ! isset( $stored['display'] ) || ! is_array( $stored['display'] ) ) {
+		$stored['display'] = $defaults['display'];
+	}
+	return $stored;
+}
+
+/**
+ * Homepage ad block config (patterns/hero-live.php), written by
+ * includes/settings-shop-ad.php — same seam pattern as the two config
+ * functions above. Defaults to no image, which the pattern treats as "don't
+ * render the block at all" rather than showing a broken/empty ad.
+ */
+function fourliberty_shop_ad_config() {
+	$defaults = array(
+		'imageUrl' => '',
+		'linkUrl'  => 'https://4libertyshop.com',
+		'altText'  => '',
+	);
+
+	$stored = get_option( 'fourliberty_shop_ad_config' );
 	return is_array( $stored ) ? $stored : $defaults;
 }
 
@@ -222,3 +527,52 @@ function fourliberty_reading_time( $post_id ) {
 	$word_count = str_word_count( wp_strip_all_tags( get_post_field( 'post_content', $post_id ) ) );
 	return max( 1, (int) round( $word_count / 200 ) );
 }
+
+/**
+ * Pop-out chat window (2026-07-23) — opened via window.open() from the
+ * "Pop out" button in the main chat rail (patterns/hero-live.php), same
+ * idea as YouTube/Twitch's own pop-out chat: a small separate window a
+ * visitor can move to a second monitor or keep beside the show elsewhere.
+ *
+ * Reached as "/?fl_chat_popup=1" — a query var rather than a rewrite rule +
+ * custom page, deliberately: no rewrite-rule flush to coordinate with a
+ * theme reupload (Austin doesn't manage a hosting console for that), and it
+ * works on any existing URL immediately, no new WordPress page for him to
+ * create. template_include swaps in a bare template (no header, hero
+ * player, or footer) for any request carrying it; wp_head()/wp_footer()
+ * still fire normally in that template, so fourliberty_assets() enqueues
+ * the same chat.js / rumble-mirror.js / account.js the homepage uses — the
+ * exact same chat, not a second implementation to keep in sync. Every other
+ * enqueued script no-ops on this page the same way it already does anywhere
+ * its own markup hook is absent (see e.g. tips.js's [data-fl="tip-bar"]
+ * check) — nothing here is popup-specific except the template.
+ */
+function fourliberty_maybe_chat_popup_template( $template ) {
+	if ( ! isset( $_GET['fl_chat_popup'] ) ) {
+		return $template;
+	}
+	$custom = get_theme_file_path( 'templates/chat-popup-template.php' );
+	return file_exists( $custom ) ? $custom : $template;
+}
+add_filter( 'template_include', 'fourliberty_maybe_chat_popup_template' );
+
+// The admin toolbar doesn't fit a narrow 380px popup — Austin (logged in as
+// himself) would be the first to see it look broken there.
+add_filter(
+	'show_admin_bar',
+	function ( $show ) {
+		return isset( $_GET['fl_chat_popup'] ) ? false : $show;
+	}
+);
+
+// This block theme gets a core title-tag <title> from wp_head() whether or
+// not the template asks for one — chat-popup-template.php doesn't call
+// wp_title()/output its own, it overrides THIS so there's exactly one
+// <title>, not "Live Chat — 4Liberty Network" and the site's normal one both
+// present (found 2026-07-23 checking the popup's actual served HTML).
+add_filter(
+	'pre_get_document_title',
+	function ( $title ) {
+		return isset( $_GET['fl_chat_popup'] ) ? __( 'Live Chat — 4Liberty Network', 'fourliberty' ) : $title;
+	}
+);

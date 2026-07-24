@@ -90,13 +90,18 @@ function fourliberty_hub_render_overview() {
 				</tr>
 				<tr>
 					<td><?php esc_html_e( 'Chat & Tips', 'fourliberty-hub' ); ?></td>
-					<td><?php esc_html_e( 'Chat on/off, open vs. gated login, moderation, and the tip-the-show amounts.', 'fourliberty-hub' ); ?></td>
-					<td><?php esc_html_e( 'Phase 3', 'fourliberty-hub' ); ?></td>
+					<td><?php esc_html_e( 'Chat on/off, tip presets and allowed range, moderation notes, and the Square connection.', 'fourliberty-hub' ); ?></td>
+					<td><?php esc_html_e( 'Live', 'fourliberty-hub' ); ?></td>
 				</tr>
 				<tr>
 					<td><?php esc_html_e( 'Product Push', 'fourliberty-hub' ); ?></td>
 					<td><?php esc_html_e( 'Search the Shopify catalog and push/clear the shoppable card during a live show.', 'fourliberty-hub' ); ?></td>
 					<td><?php esc_html_e( 'Phase 4', 'fourliberty-hub' ); ?></td>
+				</tr>
+				<tr>
+					<td><?php esc_html_e( 'Shop Ad', 'fourliberty-hub' ); ?></td>
+					<td><?php esc_html_e( 'The image + link for the homepage ad block below the video player.', 'fourliberty-hub' ); ?></td>
+					<td><?php esc_html_e( 'Live', 'fourliberty-hub' ); ?></td>
 				</tr>
 			</tbody>
 		</table>

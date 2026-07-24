@@ -35,8 +35,28 @@ function rawResponse( overrides: Record< string, unknown > = {} ) {
 				server_url: SERVER_URL,
 				stream_key: STREAM_KEY,
 				chat: {
-					recent_messages: [ { username: 'MurTech', text: 'hello' } ],
-					recent_rants: [ { username: 'Whale', amount_dollars: 50 } ],
+					recent_messages: [
+						{
+							username: 'MurTech',
+							profile_pic_url: 'https://example.com/murtech.jpg',
+							badges: [ 'verified' ],
+							text: 'hello',
+							created_on: '2026-07-06T11:51:00+00:00',
+						},
+					],
+					recent_rants: [
+						{
+							username: 'Whale',
+							profile_pic_url: 'https://example.com/whale.jpg',
+							badges: [ 'whale-yellow' ],
+							text: 'nice show',
+							created_on: '2026-07-06T11:52:00+00:00',
+							amount_dollars: 50,
+							// ── Fields the front-end never needs — must not survive ──
+							amount_cents: 5000,
+							expires_on: '2026-07-07T00:00:00+00:00',
+						},
+					],
 				},
 			},
 		],
@@ -70,12 +90,17 @@ function assertNoSecrets( output: unknown ) {
 	const forbiddenKeys = [
 		'stream_key',
 		'server_url',
-		'chat',
+		// NOTE: 'chat' itself is no longer forbidden — Phase 3 adds it as a
+		// legitimate, allowlist-sanitized field. What must never survive is
+		// the RAW nested shape (below) or anything within it that isn't on
+		// the per-message allowlist in sanitize.mts.
 		'recent_messages',
 		'recent_rants',
 		'recent_followers',
 		'recent_subscribers',
 		'recent_gifted_subs',
+		'amount_cents',
+		'expires_on',
 		'email',
 	];
 	for ( const forbidden of forbiddenKeys ) {
@@ -128,6 +153,7 @@ describe( 'sanitizeChannel — secrets', () => {
 		const output = sanitizeChannel( 'WUA', rawResponse() );
 		assert.deepEqual( Object.keys( output ).sort(), [
 			'channel',
+			'chat',
 			'embed_id',
 			'is_live',
 			'key',
@@ -201,6 +227,7 @@ describe( 'sanitizeChannel — behaviour', () => {
 			const output = sanitizeChannel( 'WUA', input );
 			assert.equal( output.is_live, false );
 			assert.equal( output.key, 'WUA' );
+			assert.deepEqual( output.chat, [] );
 			assertNoSecrets( output );
 		}
 	} );
@@ -208,10 +235,133 @@ describe( 'sanitizeChannel — behaviour', () => {
 	it( 'offlineChannel is shaped identically and is never live', () => {
 		const offline = offlineChannel( 'FNFA' );
 		assert.equal( offline.is_live, false );
+		assert.deepEqual( offline.chat, [] );
 		assert.deepEqual(
 			Object.keys( offline ).sort(),
 			Object.keys( sanitizeChannel( 'FNFA', rawResponse() ) ).sort()
 		);
+	} );
+} );
+
+describe( 'sanitizeChannel — chat', () => {
+	it( 'merges recent_messages and recent_rants into one sorted feed', () => {
+		const output = sanitizeChannel( 'WUA', rawResponse() );
+		assert.equal( output.chat.length, 2 );
+		assert.equal( output.chat[ 0 ].username, 'MurTech' );
+		assert.equal( output.chat[ 0 ].is_rant, false );
+		assert.equal( output.chat[ 0 ].amount_dollars, 0 );
+		assert.equal( output.chat[ 1 ].username, 'Whale' );
+		assert.equal( output.chat[ 1 ].is_rant, true );
+		assert.equal( output.chat[ 1 ].amount_dollars, 50 );
+	} );
+
+	it( 'locks the per-message field set', () => {
+		const output = sanitizeChannel( 'WUA', rawResponse() );
+		assert.deepEqual( Object.keys( output.chat[ 0 ] ).sort(), [
+			'amount_dollars',
+			'badges',
+			'created_on',
+			'is_rant',
+			'profile_pic_url',
+			'text',
+			'username',
+		] );
+	} );
+
+	it( 'never lets amount_cents or expires_on survive from a raw rant', () => {
+		assertNoSecrets( sanitizeChannel( 'WUA', rawResponse() ) );
+	} );
+
+	it( 'derives is_rant from the source array, never from the message itself', () => {
+		// A plain chat message claiming its own rant status and dollar amount
+		// must not work — is_rant/amount_dollars come from which ARRAY the
+		// item was found in, never from a field on the message itself.
+		const raw = rawResponse();
+		( raw.livestreams[ 0 ] as any ).chat.recent_messages = [
+			{ username: 'Faker', text: 'not a real rant', is_rant: true, amount_dollars: 999 },
+		];
+		( raw.livestreams[ 0 ] as any ).chat.recent_rants = [];
+
+		const output = sanitizeChannel( 'WUA', raw );
+		assert.equal( output.chat.length, 1 );
+		assert.equal( output.chat[ 0 ].is_rant, false );
+		assert.equal( output.chat[ 0 ].amount_dollars, 0 );
+	} );
+
+	it( 'FAILS CLOSED on a sensitive field invented on a single message', () => {
+		const raw = rawResponse();
+		( raw.livestreams[ 0 ] as any ).chat.recent_messages = [
+			{
+				username: 'MurTech',
+				text: 'hello',
+				ip_address: '10.0.0.1',
+				internal_user_id: 84213,
+				device_fingerprint: 'abc123',
+			},
+		];
+		( raw.livestreams[ 0 ] as any ).chat.recent_rants = [];
+
+		const output = sanitizeChannel( 'WUA', raw );
+		assertNoSecrets( output );
+		const { keys } = walk( output );
+		assert.ok( ! keys.includes( 'ip_address' ) );
+		assert.ok( ! keys.includes( 'internal_user_id' ) );
+		assert.ok( ! keys.includes( 'device_fingerprint' ) );
+	} );
+
+	it( 'never lets a nested object through in a chat message field', () => {
+		const raw = rawResponse();
+		( raw.livestreams[ 0 ] as any ).chat.recent_messages = [
+			{
+				username: { evil: STREAM_KEY },
+				profile_pic_url: { evil: STREAM_KEY },
+				text: { evil: STREAM_KEY },
+				badges: [ { evil: STREAM_KEY }, 'verified' ],
+			},
+		];
+		( raw.livestreams[ 0 ] as any ).chat.recent_rants = [];
+
+		const output = sanitizeChannel( 'WUA', raw );
+		assertNoSecrets( output );
+		assert.equal( output.chat[ 0 ].username, null );
+		assert.equal( output.chat[ 0 ].profile_pic_url, null );
+		assert.equal( output.chat[ 0 ].text, null );
+		assert.deepEqual( output.chat[ 0 ].badges, [ 'verified' ] );
+	} );
+
+	it( 'defaults badges to an empty array, never null or undefined', () => {
+		const raw = rawResponse();
+		( raw.livestreams[ 0 ] as any ).chat.recent_messages = [ { username: 'NoBadges', text: 'hi' } ];
+		( raw.livestreams[ 0 ] as any ).chat.recent_rants = [];
+
+		const output = sanitizeChannel( 'WUA', raw );
+		assert.deepEqual( output.chat[ 0 ].badges, [] );
+	} );
+
+	it( 'caps chat length and keeps the most recent messages', () => {
+		const raw = rawResponse();
+		const many = [];
+		for ( let i = 0; i < 60; i++ ) {
+			many.push( {
+				username: 'user' + i,
+				text: 'message ' + i,
+				created_on: new Date( 2026, 0, 1, 0, 0, i ).toISOString(),
+			} );
+		}
+		( raw.livestreams[ 0 ] as any ).chat.recent_messages = many;
+		( raw.livestreams[ 0 ] as any ).chat.recent_rants = [];
+
+		const output = sanitizeChannel( 'WUA', raw );
+		assert.equal( output.chat.length, 50 );
+		assert.equal( output.chat[ 0 ].username, 'user10' );
+		assert.equal( output.chat[ output.chat.length - 1 ].username, 'user59' );
+	} );
+
+	it( 'handles a channel with no chat data at all', () => {
+		const raw = rawResponse();
+		delete ( raw.livestreams[ 0 ] as any ).chat;
+		const output = sanitizeChannel( 'WUA', raw );
+		assert.deepEqual( output.chat, [] );
 	} );
 } );
 

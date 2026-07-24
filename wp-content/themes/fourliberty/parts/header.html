@@ -1,12 +1,14 @@
 <!-- wp:html -->
 <div class="fl-ticker">
 	<div class="fl-ticker__row">
-		<span class="fl-live-tag"><span class="fl-pulse"></span>On Air</span>
-		<!-- Phase 2 (live-swapper) replaces this static line with the Netlify
-		     poller's sanitized feed: current live show + headline, or the
-		     schedule when dark. Left static and honest until that's wired. -->
-		<span class="fl-ticker__feed" data-fl="ticker-feed"><b>Wake Up America</b> airs weekday mornings — check back for live status.</span>
-		<span class="fl-ticker__clock">MON&ndash;FRI &middot; 7&ndash;9A CT</span>
+		<!-- Real live/dark state, not a static claim — assets/js/ticker.js
+		     unhides this only when something in the roster is actually live
+		     right now, same /api/live-state payload the homepage hero reads. -->
+		<span class="fl-live-tag" data-fl="ticker-live-tag" hidden><span class="fl-pulse"></span>On Air</span>
+		<!-- assets/js/ticker.js rotates through every enabled show's name +
+		     schedule (4Liberty Hub → Live Shows), swapping to "is live right
+		     now" for whichever one actually is. -->
+		<span class="fl-ticker__feed" data-fl="ticker-feed"><b>4Liberty Network</b> — stay tuned.</span>
 	</div>
 </div>
 <!-- /wp:html -->
@@ -30,14 +32,36 @@
 		</div>
 		<!-- /wp:group -->
 
-		<!-- wp:navigation {"className":"fl-masthead__nav","layout":{"type":"flex","justifyContent":"left"},"overlayMenu":"mobile"} -->
-		<!-- wp:navigation-link {"label":"Home","url":"/"} /-->
-		<!-- wp:navigation-link {"label":"Shows","url":"/shows/"} /-->
-		<!-- wp:navigation-link {"label":"Politics","url":"/category/politics/"} /-->
-		<!-- wp:navigation-link {"label":"Culture","url":"/category/culture/"} /-->
-		<!-- wp:navigation-link {"label":"News","url":"/category/news/"} /-->
-		<!-- wp:navigation-link {"label":"Watch Live","url":"/"} /-->
-		<!-- /wp:navigation -->
+		<!-- wp:html -->
+		<!--
+		  Plain static nav, NOT a wp:navigation block (2026-07-23). The block
+		  version rendered the ENTIRE header template part empty on the live
+		  site: this install has a stray empty wp_navigation post (id 24,
+		  "Header navigation", from 2022) that the block latched onto instead
+		  of its own inner links, taking the whole masthead down with it.
+		  Static HTML — same approach as the wordmark above — can't be hijacked
+		  by a database record, needs no ref/auto-created post, and has no
+		  render callback that can fail. Mobile hamburger is handled by
+		  assets/js/site.js + the .fl-nav-toggle / .fl-nav-menu rules in
+		  editorial.css (replacing the block's built-in overlayMenu).
+		-->
+		<nav class="fl-masthead__nav" aria-label="Primary">
+			<button type="button" class="fl-nav-toggle" data-fl="nav-toggle" aria-expanded="false" aria-controls="fl-nav-menu" aria-label="Open menu">
+				<span class="fl-nav-toggle__bar"></span>
+				<span class="fl-nav-toggle__bar"></span>
+				<span class="fl-nav-toggle__bar"></span>
+			</button>
+			<ul class="fl-nav-menu" id="fl-nav-menu" data-fl="nav-menu">
+				<li><a href="/">Home</a></li>
+				<li><a href="/shows/">Shows</a></li>
+				<li><a href="/category/politics/">Politics</a></li>
+				<li><a href="/category/culture/">Culture</a></li>
+				<li><a href="/category/news/">News</a></li>
+				<li><a href="https://4libertyshop.com" target="_blank" rel="noopener">Shop</a></li>
+				<li><a href="/">Watch Live</a></li>
+			</ul>
+		</nav>
+		<!-- /wp:html -->
 
 		<!-- wp:group {"className":"fl-masthead__actions","layout":{"type":"flex","flexWrap":"nowrap"}} -->
 		<div class="wp-block-group fl-masthead__actions">

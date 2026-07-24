@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>rumble-mirror.js — manual visual preview</title>
+<!--
+	Manual/visual test harness for assets/js/rumble-mirror.js (Phase 3, task
+	B), same purpose as test/rumble-ended-spike.html in this repo: an isolated
+	page to visually verify real-site JS behavior without needing a live
+	WordPress + GoDaddy + a real Rumble broadcast. NOT part of `npm test` —
+	node's test runner only picks up test/**/*.test.mts, so this file is
+	inert to the automated suite.
+
+	Loads the REAL theme files (editorial.css, rumble-mirror.js) via relative
+	path, reproduces the exact markup patterns/hero-live.php ships, defines
+	the WordPress theme.json color/font tokens editorial.css expects (so it
+	renders with real site colors instead of unstyled defaults), and mocks
+	window.fetch + the "fl:hero-state" event that live-state.js would
+	normally supply — so this page never talks to the real Netlify endpoint.
+
+	Open directly in a browser (file://) — no server needed.
+-->
+<style>
+	:root {
+		--wp--preset--color--ink: #0f0d15;
+		--wp--preset--color--ink-raised: #15121e;
+		--wp--preset--color--surface: #1b1726;
+		--wp--preset--color--surface-deep: #221d30;
+		--wp--preset--color--line: #2c2740;
+		--wp--preset--color--line-bright: #39324f;
+		--wp--preset--color--headline: #f1ecf6;
+		--wp--preset--color--body-text: #d6d0e2;
+		--wp--preset--color--muted: #948da8;
+		--wp--preset--color--faint: #6f6885;
+		--wp--preset--color--gold: #e6ba57;
+		--wp--preset--color--gold-deep: #c99a3f;
+		--wp--preset--color--red: #df3b40;
+		--wp--preset--color--red-bright: #f2585d;
+		--wp--preset--color--blue: #5b8bd0;
+		--wp--preset--color--white: #ffffff;
+		--wp--preset--gradient--hero-glow: radial-gradient(90% 120% at 82% -10%,rgba(223,59,64,.10),transparent 55%),radial-gradient(70% 120% at 4% -10%,rgba(230,186,87,.08),transparent 55%);
+		--wp--preset--font-family--serif: Georgia, "Times New Roman", serif;
+		--wp--preset--font-family--sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+		--wp--preset--font-family--mono: ui-monospace, "SF Mono", Consolas, monospace;
+	}
+	body {
+		background: var(--wp--preset--color--ink);
+		color: var(--wp--preset--color--body-text);
+		font-family: var(--wp--preset--font-family--sans);
+		margin: 0;
+		padding: 24px;
+	}
+	.wp-block-group, .wp-block-columns, .wp-block-column { display: block; }
+	.harness {
+		max-width: 700px;
+		margin: 0 auto 24px;
+		background: var(--wp--preset--color--surface-deep);
+		border: 1px solid var(--wp--preset--color--line-bright);
+		border-radius: 12px;
+		padding: 16px 18px;
+	}
+	.harness h1 { font-size: 1rem; margin: 0 0 10px; color: var(--wp--preset--color--headline); }
+	.harness button {
+		font-family: var(--wp--preset--font-family--sans);
+		font-weight: 700;
+		font-size: .82rem;
+		padding: 9px 14px;
+		border-radius: 8px;
+		border: 1px solid var(--wp--preset--color--line-bright);
+		background: var(--wp--preset--color--surface);
+		color: var(--wp--preset--color--headline);
+		cursor: pointer;
+		margin: 0 8px 8px 0;
+	}
+	.harness button:hover { border-color: var(--wp--preset--color--gold-deep); }
+	#log {
+		max-width: 700px;
+		margin: 0 auto;
+		font-family: var(--wp--preset--font-family--mono);
+		font-size: .72rem;
+		color: var(--wp--preset--color--muted);
+		white-space: pre-wrap;
+		max-height: 160px;
+		overflow-y: auto;
+		border-top: 1px dashed var(--wp--preset--color--line);
+		padding-top: 10px;
+	}
+	.fl-hero { max-width: 700px; margin: 0 auto; padding: 20px 0; }
+</style>
+</head>
+<body>
+
+	<div class="harness">
+		<h1>rumble-mirror.js — manual preview / control panel</h1>
+		<button onclick="goLive()">Simulate: WUA goes live (5 sample messages, 1 bot, 1 rant)</button>
+		<button onclick="goDark()">Simulate: nothing live</button>
+		<button onclick="simulateFetchFail()">Simulate: next poll fails (network error)</button>
+		<button onclick="localStorage.removeItem('fl-rumble-hide-bots'); log('Cleared saved hide-bots preference — reload the page to see the default (checked) again.')">Clear saved hide-bots preference</button>
+	</div>
+
+	<!-- The exact hero-live.php structure, verbatim, so CSS selectors and
+	     JS querySelectors behave identically to production. -->
+	<div class="wp-block-group fl-hero">
+		<div class="wp-block-columns fl-hero-grid">
+			<div class="wp-block-column" style="flex-basis:70%">
+				<div class="fl-player" data-fl="hero-player">
+					<div class="fl-player__scrim"></div>
+					<span class="fl-badge-live"><span class="fl-pulse"></span>Live</span>
+					<span class="fl-viewers"><span data-fl="viewer-count">&mdash;</span> watching</span>
+					<button class="fl-play" type="button" aria-label="Play the live show">▶</button>
+					<div class="fl-player-meta">
+						<div class="fl-player-meta__show" data-fl="hero-show">Wake Up America &middot; with Austin Petersen</div>
+						<h2 data-fl="hero-title">Check back for today&rsquo;s live show</h2>
+						<div class="fl-player-meta__host">Streaming live on Rumble &mdash; join the conversation below.</div>
+					</div>
+				</div>
+				<div class="fl-also-live" data-fl="also-live"></div>
+			</div>
+			<div class="wp-block-column" style="flex-basis:30%">
+				<aside class="fl-rail" data-fl="chat-rail">
+					<div class="fl-rail__head">
+						<span class="fl-title"><span class="fl-pulse"></span> Live Chat</span>
+						<span class="fl-rail__count" data-fl="chat-count">&nbsp;</span>
+					</div>
+					<div class="fl-chat" data-fl="chat-feed">
+						<div class="fl-msg">
+							<span class="fl-msg__av"></span>
+							<span class="fl-msg__body"><span class="fl-msg__who">4Liberty Network</span> (on-site chat — Task C, not this preview)</span>
+						</div>
+					</div>
+				</aside>
+			</div>
+		</div>
+
+		<details class="fl-rumble-mirror" data-fl="rumble-mirror">
+			<summary class="fl-rumble-mirror__head">
+				<span class="fl-title"><span class="fl-pulse"></span> Rumble Chat <span class="fl-rumble-mirror__label">(mirror)</span></span>
+				<span class="fl-rumble-mirror__count" data-fl="rumble-mirror-count">&nbsp;</span>
+			</summary>
+			<div class="fl-rumble-mirror__body">
+				<div class="fl-rumble-mirror__controls">
+					<label class="fl-rumble-mirror__hide-bots">
+						<input type="checkbox" data-fl="rumble-hide-bots" /> Hide bot messages
+					</label>
+					<a class="fl-rumble-mirror__join" data-fl="rumble-join-link" href="#" target="_blank" rel="noopener">Join the chat on Rumble &rarr;</a>
+				</div>
+				<div class="fl-rumble-mirror__feed" data-fl="rumble-mirror-feed">
+					<div class="fl-msg">
+						<span class="fl-msg__body">Rumble&rsquo;s live chat mirrors here once a show is on air.</span>
+					</div>
+				</div>
+			</div>
+		</details>
+	</div>
+
+	<pre id="log"></pre>
+
+	<link rel="stylesheet" href="../wp-content/themes/fourliberty/assets/css/editorial.css" />
+
+	<script>
+		window.fourlibertyLiveEndpoint = { url: 'mock://live-state' };
+
+		function log( msg ) {
+			var el = document.getElementById( 'log' );
+			el.textContent += '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n';
+			el.scrollTop = el.scrollHeight;
+		}
+
+		function samplePayload( isLive ) {
+			if ( ! isLive ) {
+				return {
+					generated_at: new Date().toISOString(),
+					channels: [ { key: 'WUA', channel: 'AP4Liberty', is_live: false, title: null, embed_id: '7a4r64', watching_now: 0, likes: 0, scheduled_on: null, chat: [] } ],
+				};
+			}
+			var now = Date.now();
+			return {
+				generated_at: new Date().toISOString(),
+				channels: [ {
+					key: 'WUA',
+					channel: 'AP4Liberty',
+					is_live: true,
+					title: 'Trump vs. the Commie Caucus',
+					embed_id: '7a4r64',
+					watching_now: 66,
+					likes: 33,
+					scheduled_on: null,
+					chat: [
+						{ username: 'MurTech', profile_pic_url: 'https://i.pravatar.cc/40?u=murtech', badges: [ 'verified' ], text: 'Great show today!', created_on: new Date( now - 300000 ).toISOString(), is_rant: false, amount_dollars: 0 },
+						{ username: 'TheRumbleBot', profile_pic_url: null, badges: [], text: 'Subscribe to get notified when this channel goes live!', created_on: new Date( now - 240000 ).toISOString(), is_rant: false, amount_dollars: 0 },
+						{ username: 'PatriotPam', profile_pic_url: 'https://i.pravatar.cc/40?u=pam', badges: [ 'recurring_subscription' ], text: 'Second time watching this week :r+usa:', created_on: new Date( now - 180000 ).toISOString(), is_rant: false, amount_dollars: 0 },
+						{ username: 'BigWhale99', profile_pic_url: 'https://i.pravatar.cc/40?u=whale', badges: [ 'whale-yellow', 'a-brand-new-badge-never-seen-before' ], text: 'Keep up the great work!', created_on: new Date( now - 60000 ).toISOString(), is_rant: true, amount_dollars: 50 },
+						{ username: 'NoAvatarNick', profile_pic_url: 'https://broken.invalid/missing.jpg', badges: [], text: 'Hello from the chat 👋 🇺🇸', created_on: new Date( now ).toISOString(), is_rant: false, amount_dollars: 0 },
+					],
+				} ],
+			};
+		}
+
+		var currentMock = samplePayload( false );
+		var mockShouldFail = false;
+
+		window.fetch = function ( url ) {
+			log( 'fetch() called → ' + url );
+			if ( mockShouldFail ) {
+				return Promise.reject( new Error( 'simulated network failure' ) );
+			}
+			return Promise.resolve( { ok: true, status: 200, json: function () { return Promise.resolve( currentMock ); } } );
+		};
+
+		function refreshAndDispatch( live, key ) {
+			// rumble-mirror.js's own visibilitychange listener re-fetches when
+			// document.visibilityState is 'visible' (true in a focused test
+			// tab) — dispatching the event is enough to trigger a real
+			// fetchState() with the mock above, no production code touched.
+			document.dispatchEvent( new Event( 'visibilitychange' ) );
+			document.dispatchEvent( new CustomEvent( 'fl:hero-state', { detail: { live: live, key: key } } ) );
+		}
+
+		function goLive() {
+			currentMock = samplePayload( true );
+			mockShouldFail = false;
+			refreshAndDispatch( true, 'WUA' );
+			log( 'Simulated: WUA is live with 5 sample messages (1 bot, 1 rant, 1 unknown badge, 1 broken avatar, real emoji + a Rumble emote code).' );
+		}
+		function goDark() {
+			currentMock = samplePayload( false );
+			mockShouldFail = false;
+			refreshAndDispatch( false, null );
+			log( 'Simulated: nothing live.' );
+		}
+		function simulateFetchFail() {
+			mockShouldFail = true;
+			log( 'Next poll will simulate a network failure — the mirror should keep showing its last-known content, not blank out.' );
+		}
+
+		log( 'Harness ready. Click a button above to simulate a state.' );
+	</script>
+	<script src="../wp-content/themes/fourliberty/assets/js/rumble-mirror.js"></script>
+</body>
+</html>

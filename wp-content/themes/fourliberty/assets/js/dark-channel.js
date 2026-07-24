@@ -1,53 +1,36 @@
 /**
- * 4Liberty Network — Dark Channel playout engine (Phase 2, task F).
+ * 4Liberty Network — Dark Channel slider (Phase 2 task F, reworked 2026-07-23).
  *
- * Takes over the homepage hero slot ([data-fl="hero-player"], the same
- * element live-state.js drives) whenever no show is live. Decoupled from
- * live-state.js on purpose — neither script imports the other — via the
- * small public seam live-state.js exposes for exactly this (see the
- * "Public hooks for the Dark Channel playout engine" comment there):
- *   - listens for the "fl:hero-state" DOM event to know when to take over
- *     (dark) vs. get out of the way (live);
- *   - calls window.FLHub.liveState.setFacadeActive(bool) whenever it starts
- *     or stops actually playing something, so Decision 6 (never yank a
- *     playing hero) applies to Dark Channel viewers too.
+ * Takes over the homepage hero slot ([data-fl="hero-player"], the same element
+ * live-state.js drives) whenever no show is live, and gets out of the way the
+ * instant a show goes live — same decoupled seam as before (the "fl:hero-state"
+ * DOM event live-state.js dispatches; window.FLHub.liveState.setFacadeActive /
+ * isLive). Nothing here imports live-state.js and vice versa.
  *
- * Decision 4 (wall-clock scheduling): position = (now - epoch) mod (total
- * playlist duration), epoch = the Unix epoch. Every visitor computes the
- * same "what item is on right now" independently — no server round trip
- * needed for that part, which is what makes two people tuning in at
- * different times see the same programming.
+ * Austin's redesign (2026-07-23): instead of a wall-clock TV channel that
+ * autoplayed videos back-to-back, the Dark Channel is now a SLIDER of
+ * previews. Each playlist item is a slide the visitor can click:
+ *   - YouTube / Rumble video  -> thumbnail + play button; click plays it in place.
+ *   - Blog post               -> a card; click opens the post.
+ *   - Image ad                -> the image; click follows its link (JP/PNG ads).
  *
- * Ad cadence is deliberately its OWN, per-session counter rather than baked
- * into that shared cumulative-duration schedule: ad durations aren't known
- * ahead of time (the admin only collects a video ID + label, not a
- * duration — see settings-dark-channel.php), so they can't be folded into a
- * position formula the way playlist items can. Decision 4's own wording is
- * "total PLAYLIST duration" — ads aren't part of it. Practically this means
- * the shared "what's on" schedule is exactly in sync across visitors; how
- * often any one visitor sees an ad inserted is a local, per-session count
- * (still fully admin-adjustable — "every N items" / "every M minutes" per
- * PHASE-0-FINDINGS.md — just not part of the synchronized broadcast clock).
+ * Two admin display modes (4Liberty Hub -> Dark Channel -> "How it plays"):
+ *   - "slide"  : auto-rotates to the next slide every N seconds (the timer),
+ *                pausing while a clicked video is actually playing.
+ *   - "static" : holds on one slide; the visitor moves with the ← → arrows.
+ * Either way, clicking a video slide stops the rotation and plays it; when that
+ * video ends the slider resumes. The previous wall-clock "everyone sees the
+ * same thing at the same second" sync is intentionally gone — a click-to-play
+ * showcase has no single shared playhead to keep in step.
  *
- * End-of-item detection, per PHASE-2-BUILD-PLAN.md task C's result: YouTube's
- * `ended` state (via the standard IFrame Player API) is reliable and used as
- * the primary signal; Rumble's equivalent is `videoEnd` (confirmed live
- * during the task C spike, see test/rumble-ended-spike.html) and used the
- * same way. Both also carry a wall-clock duration-timer fallback — the
- * event is the nice-to-have for tight transitions, the timer is what
- * actually guarantees the channel never gets stuck (Decision 4's whole
- * point: the schedule is clock-driven regardless of whether any single
- * player's event fires).
+ * setFacadeActive() is called true ONLY while a real video is playing (so a
+ * show going live mid-watch offers a banner instead of yanking the video,
+ * live-state.js Decision 6); a bare rotating preview reports false, so a live
+ * show takes over immediately — a preview isn't precious.
  *
- * Known limitation, by design, not an oversight: mid-item seeking on join
- * is only implemented for YouTube (a documented, standard `seekTo()`).
- * Rumble's embed JS API doesn't have a confirmed seek method (its dev docs
- * host, player.rumble.com, refuses connections — see task C's writeup), so
- * a Rumble item a visitor joins mid-way always starts from 0:00 for that
- * visitor. The shared schedule still advances on time regardless (this
- * visitor's Rumble item just runs a little long from their perspective) —
- * the "everyone sees the same channel" property that matters (no one stuck
- * on item 1 forever) is preserved either way.
+ * YouTube end-of-item uses the IFrame API's ENDED state; Rumble uses its
+ * `videoEnd` event (both confirmed reliable in task C), each with a wall-clock
+ * duration fallback so a missed event can't strand the player on one video.
  */
 ( function () {
 	'use strict';
@@ -55,89 +38,55 @@
 	var CONFIG =
 		window.fourlibertyDarkChannel && Array.isArray( window.fourlibertyDarkChannel.playlist )
 			? window.fourlibertyDarkChannel
-			: { playlist: [], ads: [], adCadence: { mode: 'every_n_items', n: 4 } };
+			: { playlist: [], display: { mode: 'slide', intervalSeconds: 8 } };
 
-	var AD_FALLBACK_MAX_MS = 3 * 60 * 1000; // safety backstop if an ad's own 'ended' event never fires
-	var END_BUFFER_MS = 800; // small cushion for slides (no player event exists — the timer IS the end)
+	var DISPLAY = ( CONFIG.display && typeof CONFIG.display === 'object' ) ? CONFIG.display : {};
+	var SLIDE_MODE = DISPLAY.mode !== 'static'; // default to sliding
+	var SLIDE_MS = Math.max( 3, Number( DISPLAY.intervalSeconds ) || 8 ) * 1000;
+	var END_BUFFER_MS = 800;
 
-	/**
-	 * The admin-entered duration is a safety net, not a precise cutoff — a
-	 * video that's still genuinely playing when the timer fires would
-	 * otherwise get yanked mid-sentence just because Austin's estimate (or an
-	 * un-detectable Rumble length) ran a little short. Real videos (YouTube
-	 * `ended` / Rumble `videoEnd`, both confirmed reliable — see task C) will
-	 * almost always fire first and win via the debounce in handleEnded();
-	 * this grace is only what's left holding the channel together if an
-	 * event never comes at all. Capped so a wildly wrong duration still
-	 * can't hang the channel for too long. Not used for blog-post slides —
-	 * there's no player event there, so the timer IS the authoritative end.
-	 */
+	// Admin durations are a safety net, not a hard cut — a real video that's
+	// still playing when the timer fires would otherwise get yanked just
+	// because the admin estimate (or an un-readable Rumble length) ran short.
+	// YouTube/Rumble's own end events almost always win first; this only holds
+	// the transition together if an event never fires.
 	function withGrace( seconds ) {
 		return seconds + Math.min( 300, Math.max( 15, seconds * 0.25 ) );
 	}
 
 	var els = null;
 	var state = {
-		active: false, // true once Dark Channel owns the hero slot (i.e., currently DARK)
-		playing: false, // true once a real player is loaded & actively playing (drives setFacadeActive)
+		active: false, // Dark Channel owns the hero slot (i.e. currently DARK)
+		index: 0, // which slide is showing
+		playingVideo: false, // a real video is loaded and playing in place
+		slideTimer: null,
 		endTimer: null,
-		endHandled: false, // debounce: event + timer racing must only advance once
-		itemsSinceAd: 0,
-		lastAdAt: 0,
-		adIndex: 0,
-		currentIsAd: false,
+		endHandled: false,
 		ytPlayer: null,
-		rumblePlayer: null, // the Rumble embed-JS "api" object for the current item, if any
 		muted: true,
 	};
 
-	function totalPlaylistSeconds() {
-		return CONFIG.playlist.reduce( function ( sum, item ) {
-			return sum + ( Number( item.duration_seconds ) || 0 );
-		}, 0 );
+	function playlist() {
+		return CONFIG.playlist;
+	}
+	function currentItem() {
+		return CONFIG.playlist[ state.index ] || null;
+	}
+	function isVideo( item ) {
+		return item && ( item.type === 'youtube' || item.type === 'rumble' );
 	}
 
-	/**
-	 * Decision 4's formula. Walks the playlist's cumulative durations to
-	 * find which item wall-clock "now" falls inside, and how far into that
-	 * item we are. Recomputed fresh every time we need it — never cached
-	 * across a wait — so drift (buffering, a backgrounded tab, an ad that
-	 * ran long) self-corrects instead of accumulating.
-	 */
-	function currentScheduleItem() {
-		var total = totalPlaylistSeconds();
-		if ( ! CONFIG.playlist.length || total <= 0 ) {
-			return null;
+	function thumbFor( item ) {
+		if ( ! item ) {
+			return '';
 		}
-		var position = ( Math.floor( Date.now() / 1000 ) ) % total;
-		var cursor = 0;
-		for ( var i = 0; i < CONFIG.playlist.length; i++ ) {
-			var duration = Number( CONFIG.playlist[ i ].duration_seconds ) || 0;
-			if ( position < cursor + duration ) {
-				return { item: CONFIG.playlist[ i ], index: i, offsetSeconds: position - cursor };
-			}
-			cursor += duration;
+		if ( item.thumbnail ) {
+			return item.thumbnail;
 		}
-		return { item: CONFIG.playlist[ 0 ], index: 0, offsetSeconds: 0 }; // rounding fallback
-	}
-
-	function adCadenceDue() {
-		if ( ! CONFIG.ads || ! CONFIG.ads.length ) {
-			return false;
+		if ( item.type === 'youtube' && item.source_id ) {
+			return 'https://img.youtube.com/vi/' + encodeURIComponent( item.source_id ) + '/hqdefault.jpg';
 		}
-		var cadence = CONFIG.adCadence || {};
-		if ( cadence.mode === 'every_m_minutes' ) {
-			var minutes = Number( cadence.m ) || 0;
-			return minutes > 0 && Date.now() - state.lastAdAt >= minutes * 60 * 1000;
-		}
-		var n = Number( cadence.n ) || 0;
-		return n > 0 && state.itemsSinceAd >= n;
-	}
-
-	function nextAd() {
-		var ad = CONFIG.ads[ state.adIndex % CONFIG.ads.length ];
-		state.adIndex++;
-		return ad;
+		return '';
 	}
 
 	/* ---------- YouTube IFrame API (shared loader) ---------- */
@@ -180,15 +129,30 @@
 		stage.className = 'fl-dark-channel__stage';
 		stage.setAttribute( 'data-fl', 'dark-channel-stage' );
 
-		var poster = document.createElement( 'div' );
-		poster.className = 'fl-dark-channel__poster';
+		var badge = document.createElement( 'div' );
+		badge.className = 'fl-dark-channel__badge';
+		badge.textContent = 'On Now · 4Liberty Network';
 
-		var playBtn = document.createElement( 'button' );
-		playBtn.type = 'button';
-		playBtn.className = 'fl-play fl-dark-channel__play';
-		playBtn.setAttribute( 'aria-label', 'Play the network channel' );
-		playBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>';
-		playBtn.addEventListener( 'click', startPlayback );
+		// Prev/next — always present but only useful with 2+ slides.
+		var prevBtn = document.createElement( 'button' );
+		prevBtn.type = 'button';
+		prevBtn.className = 'fl-dark-channel__nav fl-dark-channel__nav--prev';
+		prevBtn.setAttribute( 'aria-label', 'Previous item' );
+		prevBtn.hidden = playlist().length < 2;
+		prevBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>';
+		prevBtn.addEventListener( 'click', function () {
+			skip( -1 );
+		} );
+
+		var nextBtn = document.createElement( 'button' );
+		nextBtn.type = 'button';
+		nextBtn.className = 'fl-dark-channel__nav fl-dark-channel__nav--next';
+		nextBtn.setAttribute( 'aria-label', 'Next item' );
+		nextBtn.hidden = playlist().length < 2;
+		nextBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg>';
+		nextBtn.addEventListener( 'click', function () {
+			skip( 1 );
+		} );
 
 		var muteBtn = document.createElement( 'button' );
 		muteBtn.type = 'button';
@@ -198,203 +162,205 @@
 		muteBtn.textContent = '🔇 Tap to unmute';
 		muteBtn.addEventListener( 'click', toggleMute );
 
-		var meta = document.createElement( 'div' );
-		meta.className = 'fl-dark-channel__meta';
-		var badge = document.createElement( 'div' );
-		badge.className = 'fl-dark-channel__badge';
-		badge.textContent = 'On Now · 4Liberty Network';
-		var title = document.createElement( 'h2' );
-		title.className = 'fl-dark-channel__title';
-
-		meta.appendChild( badge );
-		meta.appendChild( title );
-
-		stage.appendChild( poster );
-		stage.appendChild( playBtn );
 		facade.appendChild( stage );
+		facade.appendChild( badge );
+		facade.appendChild( prevBtn );
+		facade.appendChild( nextBtn );
 		facade.appendChild( muteBtn );
-		facade.appendChild( meta );
-
 		els.player.appendChild( facade );
 
 		els.facade = facade;
-		els.poster = poster;
-		els.playBtn = playBtn;
-		els.muteBtn = muteBtn;
-		els.title = title;
 		els.stage = stage;
+		els.badge = badge;
+		els.prevBtn = prevBtn;
+		els.nextBtn = nextBtn;
+		els.muteBtn = muteBtn;
 	}
 
-	function renderCurrentLabel() {
-		var sched = currentScheduleItem();
-		if ( ! sched || ! els.title ) {
-			return;
-		}
-		els.title.textContent = sched.item.title || 'The 4Liberty Network';
-		if ( els.poster ) {
-			var thumb = sched.item.thumbnail;
-			if ( ! thumb && sched.item.type === 'youtube' && sched.item.source_id ) {
-				thumb = 'https://img.youtube.com/vi/' + encodeURIComponent( sched.item.source_id ) + '/hqdefault.jpg';
-			}
-			els.poster.style.backgroundImage = thumb ? 'url(' + thumb + ')' : '';
-		}
-	}
+	/* ---------- Slide rendering (previews) ---------- */
 
-	/* ---------- Lifecycle: activate (go dark) / deactivate (go live) ---------- */
-
-	function activate() {
-		if ( state.active || ! CONFIG.playlist.length ) {
-			return; // idempotent; also a no-op with an empty playlist (Decision 7 — nothing broken, just no facade)
-		}
-		state.active = true;
-		els.player.classList.add( 'is-dark-channel' );
-		buildFacade();
-		renderCurrentLabel();
-		// Keep the visible "now playing" label current even before anyone
-		// presses play, and across item boundaries while idle.
-		clearInterval( state.labelInterval );
-		state.labelInterval = setInterval( renderCurrentLabel, 15000 );
-	}
-
-	function deactivate() {
-		clearInterval( state.labelInterval );
+	/**
+	 * Renders the current item as a clickable PREVIEW — never an autoplaying
+	 * video. Video previews are a button (click => play in place); blog and
+	 * image previews are plain links (the browser handles the click). The
+	 * enter animation ("fl-dark-channel__slide--enter", cleared on the next
+	 * frame) gives the "slides in from the right" motion Austin asked for.
+	 */
+	function renderSlide() {
 		teardownPlayer();
-		if ( els.facade ) {
-			els.facade.parentNode.removeChild( els.facade );
-			els.facade = null;
-		}
-		els.player.classList.remove( 'is-dark-channel' );
-		state.active = false;
-		state.playing = false;
-		setFacadeActive( false );
-	}
-
-	function onHeroStateChange( e ) {
-		if ( e.detail && e.detail.live ) {
-			deactivate();
-		} else {
-			activate();
-		}
-	}
-
-	function setFacadeActive( active ) {
-		state.playing = !! active;
-		if ( els.facade ) {
-			els.facade.classList.toggle( 'is-playing', state.playing );
-		}
-		if ( window.FLHub && window.FLHub.liveState && window.FLHub.liveState.setFacadeActive ) {
-			window.FLHub.liveState.setFacadeActive( active );
-		}
-	}
-
-	/* ---------- Playback ---------- */
-
-	function startPlayback() {
-		if ( ! state.active ) {
-			return;
-		}
-		// Inline style, not the `hidden` attribute — editorial.css's own
-		// `.fl-play { display: grid }` rule is an author-stylesheet class
-		// selector of equal specificity to the UA `[hidden]` rule, so it can
-		// win the cascade and leave the button visible; an inline style
-		// can't lose that fight. Belt-and-suspenders with the CSS-driven
-		// `.is-playing` hide that follows shortly via setFacadeActive().
-		els.playBtn.style.display = 'none';
-		playScheduled();
-	}
-
-	function playScheduled() {
-		var sched = currentScheduleItem();
-		if ( ! sched ) {
-			return;
-		}
-		loadItem( sched.item, sched.offsetSeconds, false );
-	}
-
-	function teardownPlayer() {
-		clearTimeout( state.endTimer );
-		state.endTimer = null;
-		if ( state.ytPlayer ) {
-			try {
-				state.ytPlayer.destroy();
-			} catch ( err ) {
-				/* player was already gone (e.g. tab teardown mid-load) — nothing to clean up */
-			}
-			state.ytPlayer = null;
-		}
-		if ( state.rumblePlayer ) {
-			state.rumblePlayer = null; // the iframe itself is removed with els.stage's children below
-		}
-		if ( els.stage ) {
-			var mount = els.stage.querySelector( '[data-fl="dark-channel-mount"]' );
-			if ( mount ) {
-				mount.parentNode.removeChild( mount );
-			}
-		}
-		setFacadeActive( false );
-	}
-
-	function loadItem( item, offsetSeconds, isAd ) {
-		teardownPlayer();
-		state.endHandled = false;
-		state.currentIsAd = !! isAd;
+		els.facade.classList.remove( 'is-playing' );
 		if ( els.muteBtn ) {
 			els.muteBtn.hidden = true;
 		}
-		renderCurrentLabel();
-		if ( els.title && isAd ) {
-			els.title.textContent = item.title || 'Advertisement';
+		var item = currentItem();
+		els.stage.innerHTML = '';
+		if ( ! item ) {
+			return;
 		}
 
-		if ( item.type === 'youtube' ) {
-			loadYouTube( item, offsetSeconds, isAd );
-		} else if ( item.type === 'rumble' ) {
-			loadRumble( item, offsetSeconds );
+		var slide;
+		if ( isVideo( item ) ) {
+			slide = document.createElement( 'button' );
+			slide.type = 'button';
+			slide.className = 'fl-dark-channel__slide fl-dark-channel__slide--video';
+			slide.addEventListener( 'click', function () {
+				playCurrentVideo();
+			} );
+
+			// Rumble has no confirmed auto-thumbnail source (unlike YouTube's
+			// img.youtube.com), so a Rumble item Austin hasn't manually given a
+			// Thumbnail URL has nothing to show here — a branded gradient
+			// (matching the live player's own idle background) reads as
+			// intentional instead of looking like a broken/missing image.
+			var thumb = thumbFor( item );
+			if ( thumb ) {
+				slide.style.backgroundImage = 'url(' + thumb + ')';
+			} else {
+				slide.classList.add( 'fl-dark-channel__slide--no-thumb' );
+			}
+			var play = document.createElement( 'span' );
+			play.className = 'fl-dark-channel__slide-play';
+			play.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>';
+			slide.appendChild( play );
+
+			if ( item.title ) {
+				var vtitle = document.createElement( 'span' );
+				vtitle.className = 'fl-dark-channel__slide-title';
+				vtitle.textContent = item.title;
+				slide.appendChild( vtitle );
+			}
+		} else if ( item.type === 'image' ) {
+			// Image ad — the picture is the whole slide; its link opens on click.
+			slide = document.createElement( item.url ? 'a' : 'div' );
+			slide.className = 'fl-dark-channel__slide fl-dark-channel__slide--image';
+			if ( item.url ) {
+				slide.href = item.url;
+				slide.target = '_blank';
+				slide.rel = 'noopener sponsored';
+			}
+			var img = document.createElement( 'img' );
+			img.src = item.thumbnail || '';
+			img.alt = item.title || 'Advertisement';
+			slide.appendChild( img );
 		} else {
-			renderSlide( item, offsetSeconds );
+			// Blog post — a readable card that opens the post.
+			slide = document.createElement( 'a' );
+			slide.className = 'fl-dark-channel__slide fl-dark-channel__slide--post';
+			slide.href = item.url || '#';
+			slide.target = '_blank';
+			slide.rel = 'noopener';
+			if ( item.thumbnail ) {
+				var pimg = document.createElement( 'img' );
+				pimg.src = item.thumbnail;
+				pimg.alt = '';
+				slide.appendChild( pimg );
+			}
+			var h3 = document.createElement( 'span' );
+			h3.className = 'fl-dark-channel__slide-heading';
+			h3.textContent = item.title || 'From the blog';
+			var cta = document.createElement( 'span' );
+			cta.className = 'fl-dark-channel__slide-cta';
+			cta.textContent = 'Read on the site →';
+			slide.appendChild( h3 );
+			slide.appendChild( cta );
+		}
+
+		slide.classList.add( 'fl-dark-channel__slide--enter' );
+		els.stage.appendChild( slide );
+		// Clear the enter offset on the next frame so the transition plays.
+		requestAnimationFrame( function () {
+			requestAnimationFrame( function () {
+				slide.classList.remove( 'fl-dark-channel__slide--enter' );
+			} );
+		} );
+	}
+
+	/* ---------- Rotation ---------- */
+
+	function startRotation() {
+		stopRotation();
+		if ( ! SLIDE_MODE || playlist().length < 2 ) {
+			return;
+		}
+		state.slideTimer = setTimeout( function tick() {
+			if ( ! state.playingVideo ) {
+				advance( 1 );
+			}
+			state.slideTimer = setTimeout( tick, SLIDE_MS );
+		}, SLIDE_MS );
+	}
+
+	function stopRotation() {
+		clearTimeout( state.slideTimer );
+		state.slideTimer = null;
+	}
+
+	function advance( dir ) {
+		var n = playlist().length;
+		if ( ! n ) {
+			return;
+		}
+		state.index = ( state.index + dir + n ) % n;
+		renderSlide();
+	}
+
+	// Manual arrow click — move, and (in slide mode) restart the timer so the
+	// visitor gets a full interval to look at what they navigated to.
+	function skip( dir ) {
+		advance( dir );
+		if ( SLIDE_MODE ) {
+			startRotation();
 		}
 	}
 
-	function mountEl() {
+	/* ---------- Play a clicked video in place ---------- */
+
+	function playCurrentVideo() {
+		var item = currentItem();
+		if ( ! isVideo( item ) ) {
+			return;
+		}
+		stopRotation();
+		state.playingVideo = true;
+		state.endHandled = false;
+		els.facade.classList.add( 'is-playing' );
+		els.stage.innerHTML = '';
 		var mount = document.createElement( 'div' );
 		mount.className = 'fl-dark-channel__frame';
 		mount.setAttribute( 'data-fl', 'dark-channel-mount' );
 		els.stage.appendChild( mount );
-		return mount;
+
+		if ( item.type === 'youtube' ) {
+			loadYouTube( item, mount );
+		} else {
+			loadRumble( item, mount );
+		}
 	}
 
-	function loadYouTube( item, offsetSeconds, isAd ) {
-		var mount = mountEl();
+	function loadYouTube( item, mount ) {
 		var inner = document.createElement( 'div' );
 		mount.appendChild( inner );
-
 		ensureYouTubeApi().then( function () {
 			if ( ! mount.isConnected ) {
-				return; // item changed again before the API finished loading
+				return; // slide changed again before the API finished loading
 			}
 			state.ytPlayer = new window.YT.Player( inner, {
 				videoId: item.source_id,
-				playerVars: { autoplay: 1, mute: 1, playsinline: 1, rel: 0, start: Math.max( 0, Math.floor( offsetSeconds || 0 ) ) },
+				playerVars: { autoplay: 1, mute: 1, playsinline: 1, rel: 0 },
 				events: {
 					onReady: function ( e ) {
 						e.target.mute();
 						state.muted = true;
 						e.target.playVideo();
 						setFacadeActive( true );
-						if ( isAd ) {
-							scheduleEndFallback( AD_FALLBACK_MAX_MS / 1000 );
-							return;
+						if ( els.muteBtn ) {
+							els.muteBtn.hidden = false;
 						}
-						// YouTube can report its own real length once loaded —
-						// prefer that over the admin-entered estimate when it's
-						// available, so a slightly-off admin value can't cut a
-						// video short even before withGrace()'s buffer kicks in.
-						var realDuration = e.target.getDuration();
-						var base =
-							realDuration > 0
-								? Math.max( 1, realDuration - ( offsetSeconds || 0 ) )
-								: Math.max( 1, ( Number( item.duration_seconds ) || 0 ) - ( offsetSeconds || 0 ) );
-						scheduleEndFallback( withGrace( base ) );
+						var real = e.target.getDuration();
+						var base = real > 0 ? real : ( Number( item.duration_seconds ) || 0 );
+						if ( base > 0 ) {
+							scheduleEndFallback( withGrace( base ) );
+						}
 					},
 					onStateChange: function ( e ) {
 						if ( e.data === window.YT.PlayerState.ENDED ) {
@@ -406,70 +372,51 @@
 		} );
 	}
 
-	function loadRumble( item, offsetSeconds ) {
-		var mount = mountEl();
-		var innerId = 'fl-dc-rumble-' + Date.now();
-		var inner = document.createElement( 'div' );
-		inner.id = innerId;
-		mount.appendChild( inner );
-
-		var videoId = item.source_id;
-		// Rumble's own embed-JS loader (see test/rumble-ended-spike.html for
-		// the confirmed-working source of this exact snippet).
-		/* eslint-disable */
-		!function(r,u,m,b,l,e){r._Rumble=b,r[b]||(r[b]=function(){(r[b]._=r[b]._||[]).push(arguments);if(r[b]._.length==1){l=u.createElement(m),e=u.getElementsByTagName(m)[0],l.async=1,l.src="https://rumble.com/embedJS/"+videoId+(arguments[1].video?'.'+arguments[1].video:'')+"/?url="+encodeURIComponent(location.href)+"&args="+encodeURIComponent(JSON.stringify([].slice.apply(arguments))),e.parentNode.insertBefore(l,e)}})}(window, document, "script", "Rumble");
-		/* eslint-enable */
-
-		window.Rumble( 'play', {
-			video: videoId,
-			div: innerId,
-			rel: 0,
-			api: function ( api ) {
-				if ( ! mount.isConnected ) {
-					return; // item changed again before Rumble's script finished loading
-				}
-				state.rumblePlayer = api;
-				setFacadeActive( true );
-				// No confirmed seek API (see file header) — always starts at
-				// 0:00 regardless of offsetSeconds; the fallback timer below
-				// still tracks the SCHEDULED remaining time, not the full
-				// item length, so the shared channel clock stays honest. No
-				// way to read Rumble's real duration either (getCurrentVideo()
-				// doesn't carry one — see task C), so this leans entirely on
-				// the admin-entered length plus withGrace()'s buffer.
-				var fallbackSeconds = Math.max( 1, ( Number( item.duration_seconds ) || 0 ) - ( offsetSeconds || 0 ) );
-				scheduleEndFallback( withGrace( fallbackSeconds ) );
-				api.on( 'videoEnd', handleEnded );
-			},
-		} );
+	/**
+	 * Rumble's own public slugs always carry a leading "v" (rumble.com/
+	 * v7d4g0e-title.html), but item.source_id doesn't reliably have it:
+	 * admin-dark-channel.js's extractVideoId() preserves the "v" when Austin
+	 * pastes a full URL, but passes a bare typed ID through completely
+	 * unchanged (no "v" to preserve). Normalizing here means either input
+	 * works, instead of silently depending on which one Austin used.
+	 */
+	function rumbleEmbedSlug( id ) {
+		var raw = String( id || '' );
+		return /^v/i.test( raw ) ? raw : 'v' + raw;
 	}
 
-	function renderSlide( item, offsetSeconds ) {
-		var mount = mountEl();
-		mount.classList.add( 'fl-dark-channel__slide' );
+	/**
+	 * Plain iframe embed (2026-07-23) — replaced Rumble's window.Rumble()
+	 * JS-API loader, which never reliably played a video here (root cause:
+	 * that API's `video` param disagreed with the "v"-prefixed slugs
+	 * extractVideoId() produces from a pasted URL — the very input path
+	 * Austin's most likely to use). This is the exact embed pattern
+	 * live-state.js's loadPlayer() already uses successfully for live Rumble
+	 * streams, so it's proven, not a guess. Trade-off: an iframe gives no
+	 * JS access to a "video ended" event, so end-of-item detection here
+	 * leans entirely on the admin-entered duration + withGrace()'s buffer —
+	 * same fallback path YouTube already has as backup, just load-bearing
+	 * here instead of secondary. A Rumble item with no duration set simply
+	 * won't auto-advance on its own; the visitor can still move on with the
+	 * arrows.
+	 */
+	function loadRumble( item, mount ) {
+		var iframe = document.createElement( 'iframe' );
+		iframe.className = 'fl-dark-channel__rumble-frame';
+		iframe.src = 'https://rumble.com/embed/' + encodeURIComponent( rumbleEmbedSlug( item.source_id ) ) + '/?autoplay=2';
+		iframe.setAttribute( 'allow', 'autoplay; fullscreen' );
+		iframe.setAttribute( 'allowfullscreen', '' );
+		iframe.loading = 'lazy';
+		mount.appendChild( iframe );
 
-		var thumb = item.thumbnail;
-		var card = document.createElement( 'a' );
-		card.className = 'fl-dark-channel__slide-card';
-		card.href = item.url || '#';
-		if ( thumb ) {
-			var img = document.createElement( 'img' );
-			img.src = thumb;
-			img.alt = '';
-			card.appendChild( img );
+		setFacadeActive( true );
+		if ( els.muteBtn ) {
+			els.muteBtn.hidden = true; // no confirmed mute/unMute on a bare Rumble iframe — don't offer a control that can't work
 		}
-		var h3 = document.createElement( 'h3' );
-		h3.textContent = item.title || 'From the blog';
-		var cta = document.createElement( 'span' );
-		cta.className = 'fl-dark-channel__slide-cta';
-		cta.textContent = 'Read on the site →';
-		card.appendChild( h3 );
-		card.appendChild( cta );
-		mount.appendChild( card );
-
-		setFacadeActive( true ); // "playing" in the sense of Decision 6 — don't yank a slide either
-		var remaining = Math.max( 1, ( Number( item.duration_seconds ) || 0 ) - ( offsetSeconds || 0 ) );
-		scheduleEndFallback( remaining );
+		var base = Number( item.duration_seconds ) || 0;
+		if ( base > 0 ) {
+			scheduleEndFallback( withGrace( base ) );
+		}
 	}
 
 	function scheduleEndFallback( seconds ) {
@@ -477,32 +424,35 @@
 		state.endTimer = setTimeout( handleEnded, seconds * 1000 + END_BUFFER_MS );
 	}
 
+	// A played video finished (event or fallback) — return to the slider and,
+	// in slide mode, move on to the next item and resume rotating.
 	function handleEnded() {
 		if ( state.endHandled ) {
-			return; // event + timer can both fire close together — only advance once
+			return;
 		}
 		state.endHandled = true;
 		clearTimeout( state.endTimer );
-
-		if ( state.currentIsAd ) {
-			state.itemsSinceAd = 0;
-			state.lastAdAt = Date.now();
-			playScheduled(); // resume the shared schedule fresh — time didn't stop for the ad
-			return;
+		state.playingVideo = false;
+		setFacadeActive( false );
+		if ( SLIDE_MODE ) {
+			advance( 1 );
+			startRotation();
+		} else {
+			renderSlide(); // back to this item's preview
 		}
+	}
 
-		state.itemsSinceAd++;
-		if ( adCadenceDue() ) {
-			var ad = nextAd();
-			// Ads are always YouTube-hosted (PHASE-0-FINDINGS.md) and the
-			// admin only collects {source_id, title} for them — force the
-			// type explicitly rather than relying on that shape, so a
-			// missing `type` field can never silently fall through to the
-			// blog-slide renderer.
-			loadItem( { type: 'youtube', source_id: ad.source_id, title: ad.title }, 0, true );
-			return;
+	function teardownPlayer() {
+		clearTimeout( state.endTimer );
+		state.endTimer = null;
+		if ( state.ytPlayer ) {
+			try {
+				state.ytPlayer.destroy();
+			} catch ( err ) {
+				/* already gone */
+			}
+			state.ytPlayer = null;
 		}
-		playScheduled();
 	}
 
 	function toggleMute() {
@@ -514,32 +464,60 @@
 				state.ytPlayer.unMute();
 			}
 		}
-		// Rumble's embed JS API has no confirmed mute/unMute method (same
-		// docs-host gap noted throughout this file) — the mute button still
-		// updates its own label so the control isn't silently broken, but
-		// only YouTube items actually change volume today.
 		if ( els.muteBtn ) {
 			els.muteBtn.textContent = state.muted ? '🔇 Tap to unmute' : '🔊 Mute';
 		}
 	}
 
-	// Reveal the unmute control once something is actually playing — no
-	// point showing it over the static poster.
-	function showMuteControlWhenPlaying() {
-		if ( els.muteBtn && state.playing ) {
-			els.muteBtn.hidden = false;
+	/* ---------- Lifecycle: activate (dark) / deactivate (live) ---------- */
+
+	function setFacadeActive( active ) {
+		if ( window.FLHub && window.FLHub.liveState && window.FLHub.liveState.setFacadeActive ) {
+			window.FLHub.liveState.setFacadeActive( active );
+		}
+	}
+
+	function activate() {
+		if ( state.active || ! playlist().length ) {
+			return;
+		}
+		state.active = true;
+		state.index = 0;
+		els.player.classList.add( 'is-dark-channel' );
+		buildFacade();
+		renderSlide();
+		startRotation();
+	}
+
+	function deactivate() {
+		stopRotation();
+		teardownPlayer();
+		if ( els.facade ) {
+			els.facade.parentNode.removeChild( els.facade );
+			els.facade = null;
+		}
+		els.player.classList.remove( 'is-dark-channel' );
+		state.active = false;
+		state.playingVideo = false;
+		setFacadeActive( false );
+	}
+
+	function onHeroStateChange( e ) {
+		if ( e.detail && e.detail.live ) {
+			deactivate();
+		} else {
+			activate();
 		}
 	}
 
 	function init() {
 		var player = document.querySelector( '[data-fl="hero-player"]' );
-		if ( ! player || ! CONFIG.playlist.length ) {
-			return; // no hero pattern on this page, or nothing programmed yet — nothing to do (Decision 7: safe, not broken)
+		if ( ! player || ! playlist().length ) {
+			return; // no hero on this page, or nothing programmed yet (Decision 7: safe, not broken)
 		}
 		els = { player: player };
 
 		document.addEventListener( 'fl:hero-state', onHeroStateChange );
-		setInterval( showMuteControlWhenPlaying, 1000 );
 
 		var alreadyLive =
 			window.FLHub && window.FLHub.liveState && window.FLHub.liveState.isLive && window.FLHub.liveState.isLive();

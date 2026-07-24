@@ -60,6 +60,23 @@
 			? window.fourlibertyLiveShows
 			: DEFAULT_CONFIG;
 
+	/**
+	 * "/?watch=WUJC"-style deep link from a /shows/ card (assets/js/
+	 * show-grid.js, 2026-07-23) — seeds the SAME pin mechanism as an
+	 * "also live" tile click, just from a URL instead of an in-page click.
+	 * pickHero() below already clears an expired pin on its own the moment
+	 * that channel isn't live, so a stale/guessed key here is harmless — it
+	 * simply never wins and the normal priority order takes over.
+	 */
+	function requestedWatchKey() {
+		try {
+			var raw = new URLSearchParams( window.location.search ).get( 'watch' );
+			return raw ? raw.toUpperCase() : null;
+		} catch ( e ) {
+			return null;
+		}
+	}
+
 	var els = null;
 	var defaultCopy = { show: '', title: '', host: '' };
 	var pollTimer = null;
@@ -70,7 +87,7 @@
 		heroGated: false,
 		heroFacadeActive: false, // true once a player is actually loaded/playing
 		currentEmbedId: null,
-		pinnedKey: null, // manual pick via "also live" click; sticky until offline
+		pinnedKey: requestedWatchKey(), // manual pick via "also live" click or a "?watch=" deep link; sticky until offline
 		missStreak: 0, // consecutive polls where the hero reported not-live
 		lastGoodFetch: 0,
 		dismissedBannerForKey: null,
@@ -189,7 +206,12 @@
 		resetPlayerIfAny();
 		var iframe = document.createElement( 'iframe' );
 		iframe.className = 'fl-player__frame';
-		iframe.src = 'https://rumble.com/embed/' + encodeURIComponent( embedId ) + '/?autoplay=2';
+		// Rumble's Live Stream API returns the bare video id (e.g. "7axizy"),
+		// but its embed URLs require the "v" prefix used in the public video
+		// slug (rumble.com/v7axizy-title.html) — confirmed 2026-07-23 against a
+		// real live broadcast, where the bare id 404s and the "v"-prefixed one
+		// loads correctly.
+		iframe.src = 'https://rumble.com/embed/v' + encodeURIComponent( embedId ) + '/?autoplay=2';
 		iframe.setAttribute( 'allow', 'autoplay; fullscreen' );
 		iframe.setAttribute( 'allowfullscreen', '' );
 		iframe.setAttribute( 'data-fl-embed', '1' );
@@ -302,6 +324,35 @@
 		els.player.parentNode.insertBefore( el, els.player );
 	}
 
+	/**
+	 * Rumble's Live Stream API has no thumbnail field at all (confirmed live
+	 * against the real API, PHASE-0-FINDINGS.md) — there's no per-second frame
+	 * to show, so this is a static, owner-uploaded stand-in (Live Shows admin,
+	 * "Cover image") for the flat idle gradient, applied only while this
+	 * channel is the live hero. Cleared in goDark() — the cover means nothing
+	 * once nothing's live, and the next live show gets its own.
+	 */
+	function applyCoverImage( cfg ) {
+		if ( ! els.player ) {
+			return;
+		}
+		if ( cfg.coverImage ) {
+			els.player.style.backgroundImage = 'url(' + cfg.coverImage + ')';
+			els.player.style.backgroundSize = 'cover';
+			els.player.style.backgroundPosition = 'center';
+			// The CSS `background:` shorthand this overrides doesn't set
+			// repeat explicitly, which means its actual value is the default
+			// (repeat) — harmless for a gradient, but without this a real
+			// photo would tile instead of filling the box once.
+			els.player.style.backgroundRepeat = 'no-repeat';
+		} else {
+			els.player.style.backgroundImage = '';
+			els.player.style.backgroundSize = '';
+			els.player.style.backgroundPosition = '';
+			els.player.style.backgroundRepeat = '';
+		}
+	}
+
 	function applyHero( channel, opts ) {
 		opts = opts || {};
 		var cfg = showConfig( channel.key );
@@ -312,6 +363,7 @@
 		state.heroGated = gated;
 		state.currentEmbedId = channel.embed_id;
 		state.missStreak = 0;
+		applyCoverImage( cfg );
 
 		if ( els.heroShow ) {
 			els.heroShow.textContent = cfg.name + ( cfg.host ? ' · ' + cfg.host : '' );
@@ -353,6 +405,7 @@
 		resetPlayerIfAny();
 		removeGatedCta();
 		removeBanner();
+		applyCoverImage( {} ); // no coverImage key -> clears back to the idle gradient
 		els.player.classList.remove( 'is-live', 'is-gated' );
 
 		if ( els.heroShow ) {

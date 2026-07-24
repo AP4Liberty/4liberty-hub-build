@@ -34,6 +34,11 @@
 	margin: 0 auto;
 	padding: 0 22px;
 }
+/* Same [hidden]-vs-class-display gotcha as .fl-account__form and
+   .fl-showcard__live — assets/js/ticker.js toggles `hidden` based on real
+   live status (2026-07-23), which a bare display:inline-flex rule would
+   otherwise beat. */
+.fl-live-tag[hidden] { display: none; }
 .fl-live-tag {
 	display: inline-flex;
 	align-items: center;
@@ -62,7 +67,6 @@
 }
 .fl-ticker__feed { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .fl-ticker__feed b { color: var(--wp--preset--color--body-text); font-weight: 600; }
-.fl-ticker__clock { margin-left: auto; white-space: nowrap; flex: none; }
 
 /* ---------- Masthead ---------- */
 /* backdrop-filter deliberately lives on ::before, NOT on .fl-masthead itself.
@@ -93,9 +97,6 @@
 	backdrop-filter: blur(10px);
 	-webkit-backdrop-filter: blur(10px);
 }
-.fl-masthead .wp-block-navigation-item > a:hover {
-	color: var(--wp--preset--color--gold) !important;
-}
 .fl-masthead__row {
 	align-items: center;
 	gap: 26px;
@@ -108,11 +109,47 @@
 	flex: none;
 }
 .fl-wordmark-link { text-decoration: none; display: inline-flex; align-items: center; }
-.fl-masthead__nav { flex: 1 1 auto; }
-.fl-masthead__nav .wp-block-navigation-item a {
+
+/* Static primary nav (replaced the wp:navigation block 2026-07-23 — see
+   parts/header.html for why). .fl-nav-toggle is the mobile hamburger, hidden
+   on desktop and revealed by the media query below; assets/js/site.js flips
+   .is-open on the menu. */
+.fl-masthead__nav { flex: 1 1 auto; display: flex; align-items: center; }
+.fl-nav-menu {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	align-items: center;
+	gap: 22px;
+}
+.fl-nav-menu a {
 	font-size: .83rem;
 	font-weight: 600;
 	color: var(--wp--preset--color--body-text);
+	text-decoration: none;
+}
+.fl-nav-menu a:hover { color: var(--wp--preset--color--gold); }
+.fl-nav-toggle {
+	display: none;
+	flex-direction: column;
+	justify-content: center;
+	gap: 4px;
+	width: 40px;
+	height: 40px;
+	padding: 0;
+	background: none;
+	border: 1px solid var(--wp--preset--color--line-bright);
+	border-radius: 8px;
+	cursor: pointer;
+}
+.fl-nav-toggle__bar {
+	display: block;
+	width: 18px;
+	height: 2px;
+	margin: 0 auto;
+	background: var(--wp--preset--color--headline);
+	border-radius: 1px;
 }
 .fl-masthead__actions { align-items: center; gap: 14px; flex: none; }
 .fl-wordmark {
@@ -252,6 +289,17 @@
 	right: 20px;
 	bottom: 18px;
 	z-index: 2;
+	/* Live-blocking bug found & confirmed 2026-07-24 (Culturama's actual live
+	   title ran long enough to reproduce it): this text block is bottom-
+	   anchored with no max-height, so a long live title can wrap tall enough
+	   to visually and functionally cover the centered .fl-play button, which
+	   sits underneath it in the same stacking context. Every tap was landing
+	   on this text (confirmed via elementFromPoint at the button's own
+	   center), not the button — worse on mobile, where the much shorter
+	   player height leaves far less clearance. This block is plain text with
+	   no interactive children, so making it click-through is a safe, total
+	   fix rather than a per-title workaround. */
+	pointer-events: none;
 }
 .fl-player-meta__show {
 	font-family: var(--wp--preset--font-family--mono);
@@ -275,6 +323,21 @@
 .fl-player-meta__host { font-size: .82rem; color: #c9c2d6; margin-top: 8px; }
 
 .fl-also-live { display: flex; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+
+/* Homepage ad block (2026-07-23) — fills the gap left by the taller chat
+   rail next to it. Same rounded/bordered treatment as .fl-player above it so
+   it reads as a natural continuation, not a bolted-on banner. object-fit:
+   cover means any image Austin picks fills the 16:9 box without needing to
+   be pre-cropped. */
+.fl-shop-ad {
+	display: block;
+	margin-top: 14px;
+	border-radius: 16px;
+	overflow: hidden;
+	border: 1px solid var(--wp--preset--color--line-bright);
+	aspect-ratio: 16 / 9;
+}
+.fl-shop-ad img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .fl-mini-live {
 	flex: 1;
 	min-width: 180px;
@@ -471,70 +534,156 @@ button.fl-mini-live {
 	padding: 6px 12px;
 	cursor: pointer;
 }
-.fl-dark-channel__meta {
+.fl-dark-channel__nav {
+	position: absolute;
+	top: 50%;
+	transform: translateY(-50%);
+	z-index: 4;
+	width: 40px;
+	height: 40px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(9,7,12,.6);
+	color: #fff;
+	border: 1px solid var(--wp--preset--color--line-bright);
+	border-radius: 50%;
+	padding: 0;
+	cursor: pointer;
+}
+.fl-dark-channel__nav svg {
+	width: 20px;
+	height: 20px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+.fl-dark-channel__nav--prev { left: 16px; }
+.fl-dark-channel__nav--next { right: 16px; }
+.fl-dark-channel__nav[hidden] { display: none; }
+.fl-dark-channel__badge {
+	position: absolute;
+	top: 16px;
+	left: 16px;
+	z-index: 3;
+	font-family: var(--wp--preset--font-family--mono);
+	font-size: .6rem;
+	letter-spacing: .16em;
+	text-transform: uppercase;
+	color: var(--wp--preset--color--gold);
+	background: rgba(9,7,12,.55);
+	border: 1px solid var(--wp--preset--color--line-bright);
+	border-radius: var(--fl-radius-pill);
+	padding: 5px 11px;
+	pointer-events: none;
+}
+/* Hide the "On Now" badge while a real clicked video is playing (dark-channel.js
+   toggles .is-playing on the facade) so it isn't stuck over the video. */
+.fl-dark-channel.is-playing .fl-dark-channel__badge { display: none; }
+
+/* Each playlist item is one full-stage slide; only one exists at a time.
+   The --enter offset (added on render, cleared next frame by dark-channel.js)
+   plays the "slides in from the right" motion Austin asked for. */
+.fl-dark-channel__slide {
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 0;
+	margin: 0;
+	padding: 0;
+	background: var(--wp--preset--color--ink);
+	text-decoration: none;
+	overflow: hidden;
+	transition: transform .45s ease, opacity .45s ease;
+}
+.fl-dark-channel__slide--enter { transform: translateX(6%); opacity: 0; }
+
+/* Video preview — thumbnail fills the slide, play button centered, title
+   along the bottom. The whole slide (a <button>) is the click-to-play target. */
+.fl-dark-channel__slide--video {
+	background-size: cover;
+	background-position: center;
+	background-color: #171019;
+	cursor: pointer;
+}
+/* No thumbnail available (typically a Rumble item with no manually-set
+   Thumbnail URL) — same idle gradient as the live player, so it reads as
+   deliberate rather than a broken/missing image. */
+.fl-dark-channel__slide--no-thumb {
+	background-image:
+		radial-gradient(120% 90% at 30% 20%, #3a2340, #171019 70%),
+		linear-gradient(160deg, #241633, #0f0b14);
+}
+.fl-dark-channel__slide--video::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(to top, rgba(9,7,12,.7) 2%, transparent 42%);
+}
+.fl-dark-channel__slide-play {
+	position: relative;
+	z-index: 1;
+	width: 74px;
+	height: 74px;
+	border-radius: 50%;
+	background: rgba(230,186,87,.18);
+	border: 1.5px solid var(--wp--preset--color--gold);
+	display: grid;
+	place-items: center;
+	backdrop-filter: blur(3px);
+	transition: transform .18s, background .18s;
+}
+.fl-dark-channel__slide--video:hover .fl-dark-channel__slide-play {
+	transform: scale(1.06);
+	background: rgba(230,186,87,.28);
+}
+.fl-dark-channel__slide-play svg { width: 26px; height: 26px; margin-left: 4px; fill: var(--wp--preset--color--gold); }
+.fl-dark-channel__slide-title {
 	position: absolute;
 	left: 20px;
 	right: 20px;
 	bottom: 18px;
-	z-index: 3;
-	pointer-events: none;
-}
-.fl-dark-channel__badge {
-	font-family: var(--wp--preset--font-family--mono);
-	font-size: .64rem;
-	letter-spacing: .18em;
-	text-transform: uppercase;
-	color: var(--wp--preset--color--gold);
-	margin-bottom: 8px;
-}
-.fl-dark-channel__title {
+	z-index: 1;
 	font-family: var(--wp--preset--font-family--serif);
 	font-weight: 700;
 	color: #fff;
-	font-size: clamp(1.3rem, 2.6vw, 1.9rem);
-	line-height: 1.1;
-	margin: 0;
+	font-size: clamp(1.1rem, 2.4vw, 1.7rem);
+	line-height: 1.12;
+	text-align: left;
 	text-wrap: balance;
-	max-width: 80%;
 }
-/* Once playback actually starts (dark-channel.js toggles .is-playing on
-   .fl-dark-channel, same trigger as setFacadeActive(true)), get the poster
-   and text out of the way of the video — same idea as .fl-player.is-playing
-   above for the live case. */
-.fl-dark-channel.is-playing .fl-dark-channel__poster,
-.fl-dark-channel.is-playing .fl-dark-channel__meta,
-.fl-dark-channel.is-playing .fl-dark-channel__play { display: none; }
 
-/* Blog-post playlist items render as a readable card rather than a video —
-   never fullscreen/autoplay a "video" that doesn't exist. */
-.fl-dark-channel__slide {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	background: var(--wp--preset--color--surface);
-}
-.fl-dark-channel__slide-card {
-	display: flex;
+/* Image ad — the picture is the whole slide, contained so nothing is cropped. */
+.fl-dark-channel__slide--image { background: #0f0d15; cursor: pointer; }
+.fl-dark-channel__slide--image img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+/* Blog post — a readable card. */
+.fl-dark-channel__slide--post {
 	flex-direction: column;
-	align-items: center;
-	gap: 10px;
+	gap: 12px;
 	text-align: center;
 	padding: 24px;
-	text-decoration: none;
-	max-width: 420px;
+	background: var(--wp--preset--color--surface);
 }
-.fl-dark-channel__slide-card img {
+.fl-dark-channel__slide--post img {
 	width: 100%;
 	max-width: 260px;
 	aspect-ratio: 16/9;
 	object-fit: cover;
 	border-radius: 10px;
 }
-.fl-dark-channel__slide-card h3 {
+.fl-dark-channel__slide-heading {
 	font-family: var(--wp--preset--font-family--serif);
 	color: var(--wp--preset--color--headline);
 	font-size: clamp(1.1rem, 2.2vw, 1.4rem);
-	margin: 0;
+	max-width: 420px;
 }
 .fl-dark-channel__slide-cta {
 	font-family: var(--wp--preset--font-family--mono);
@@ -545,9 +694,64 @@ button.fl-mini-live {
 }
 
 @media (max-width: 560px) {
-	.fl-dark-channel__title { font-size: 1.15rem; }
+	.fl-dark-channel__slide-title { font-size: 1.05rem; }
+	.fl-dark-channel__slide-play { width: 58px; height: 58px; }
+	.fl-dark-channel__slide-play svg { width: 20px; height: 20px; }
 	.fl-dark-channel__mute { top: 10px; right: 10px; padding: 5px 10px; font-size: .62rem; }
+	.fl-dark-channel__nav { width: 32px; height: 32px; }
+	.fl-dark-channel__nav svg { width: 16px; height: 16px; }
+	.fl-dark-channel__nav--prev { left: 8px; }
+	.fl-dark-channel__nav--next { right: 8px; }
 }
+
+/* ---------- Light account (Phase 3, task D) ---------- */
+.fl-account {
+	padding: 8px 15px;
+	border-bottom: 1px solid var(--wp--preset--color--line);
+	font-size: .74rem;
+	color: var(--wp--preset--color--muted);
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.fl-account__link {
+	background: none;
+	border: none;
+	padding: 0;
+	color: var(--wp--preset--color--gold);
+	font-size: .74rem;
+	text-decoration: underline;
+	cursor: pointer;
+}
+.fl-account__form { display: flex; gap: 6px; flex: 1; min-width: 200px; }
+/* Same [hidden]-vs-class-display gotcha as .fl-rumble-mirror__join and
+   .fl-tip-panel — form.hidden = true (account.js) is otherwise beaten by
+   the display:flex rule above. */
+.fl-account__form[hidden] { display: none; }
+.fl-account__form input {
+	flex: 1;
+	min-width: 0;
+	background: var(--wp--preset--color--ink);
+	border: 1px solid var(--wp--preset--color--line-bright);
+	border-radius: 6px;
+	padding: 5px 8px;
+	color: var(--wp--preset--color--headline);
+	font-family: var(--wp--preset--font-family--sans);
+	font-size: .74rem;
+}
+.fl-account__form button {
+	background: var(--wp--preset--color--gold);
+	color: #1a130a;
+	font-weight: 700;
+	font-size: .72rem;
+	border: none;
+	border-radius: 6px;
+	padding: 5px 10px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.fl-account__status { width: 100%; font-size: .72rem; }
 
 /* ---------- Chat + tip rail ---------- */
 .fl-rail {
@@ -559,6 +763,108 @@ button.fl-mini-live {
 	overflow: hidden;
 	height: 100%;
 }
+
+/* Off-air schedule panel (2026-07-23) — swapped in for the chat rail by
+   assets/js/schedule-rail.js whenever no show is live, so an off-air visitor
+   sees "here's when we're live" instead of an empty chat. The [hidden] rules
+   need this specificity to beat the display:flex above (a bare UA [hidden]
+   rule would lose to the class selector otherwise) — same reason the nav
+   arrows and ticker tag carry their own [hidden] rules. */
+.fl-rail[hidden],
+.fl-schedule-rail[hidden] { display: none; }
+.fl-schedule-rail {
+	background: var(--wp--preset--color--surface);
+	border: 1px solid var(--wp--preset--color--line);
+	border-radius: 16px;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	height: 100%;
+}
+.fl-schedule-rail__body {
+	padding: 15px;
+	display: flex;
+	flex-direction: column;
+	gap: 15px;
+}
+.fl-schedule-rail__intro {
+	margin: 0;
+	font-size: .82rem;
+	line-height: 1.45;
+	color: var(--wp--preset--color--muted);
+}
+.fl-schedule-rail__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 9px;
+}
+.fl-schedule-rail__item {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	padding: 11px 13px;
+	background: var(--wp--preset--color--ink);
+	border: 1px solid var(--wp--preset--color--line);
+	border-radius: 10px;
+}
+.fl-schedule-rail__name {
+	font-weight: 700;
+	font-size: .88rem;
+	color: var(--wp--preset--color--headline);
+	text-decoration: none;
+}
+/* Only an <a> when a Rumble channel link is set (assets/js/schedule-rail.js) —
+   a plain <span> for a show with none never gets this hover treatment. */
+a.fl-schedule-rail__name:hover { color: var(--wp--preset--color--gold); text-decoration: underline; }
+.fl-schedule-rail__when {
+	font-family: var(--wp--preset--font-family--mono);
+	font-size: .68rem;
+	letter-spacing: .04em;
+	color: var(--wp--preset--color--gold);
+}
+.fl-schedule-rail__notify {
+	border-top: 1px solid var(--wp--preset--color--line);
+	padding-top: 15px;
+}
+.fl-schedule-rail__notify-label {
+	display: block;
+	font-size: .8rem;
+	font-weight: 600;
+	color: var(--wp--preset--color--headline);
+	margin-bottom: 9px;
+}
+.fl-schedule-rail__form { display: flex; gap: 6px; }
+.fl-schedule-rail__form input {
+	flex: 1;
+	min-width: 0;
+	padding: 9px 11px;
+	border: 1px solid var(--wp--preset--color--line-bright);
+	border-radius: 8px;
+	background: var(--wp--preset--color--ink);
+	color: var(--wp--preset--color--headline);
+	font-size: .82rem;
+}
+.fl-schedule-rail__form button {
+	flex: none;
+	padding: 9px 15px;
+	border: none;
+	border-radius: 8px;
+	background: var(--wp--preset--color--red);
+	color: #fff;
+	font-weight: 700;
+	font-size: .8rem;
+	cursor: pointer;
+}
+.fl-schedule-rail__status {
+	margin: 9px 0 0;
+	font-size: .76rem;
+	color: var(--wp--preset--color--muted);
+	min-height: 1em;
+}
+.fl-schedule-rail__status--error { color: var(--wp--preset--color--red-bright); }
 .fl-rail__head {
 	display: flex;
 	align-items: center;
@@ -575,7 +881,73 @@ button.fl-mini-live {
 	gap: 8px;
 }
 .fl-rail__count { font-family: var(--wp--preset--font-family--mono); font-size: .64rem; color: var(--wp--preset--color--muted); }
-.fl-chat { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 210px; }
+.fl-rail__popout {
+	background: none;
+	border: none;
+	color: var(--wp--preset--color--muted);
+	font-size: 1rem;
+	line-height: 1;
+	cursor: pointer;
+	padding: 2px;
+	margin-left: 6px;
+}
+.fl-rail__popout:hover { color: var(--wp--preset--color--gold); }
+
+/* ---------- Pop-out chat window (2026-07-23) ---------- */
+/* templates/chat-popup-template.php — the SAME .fl-rail markup as the main
+   page, just filling the whole small window instead of a 30%-width column,
+   so it reads as its own window rather than a card floating inside one.
+   min-height: 100vh (not html/body height:100%) so this doesn't depend on
+   :has() support or touch <html> at all. */
+body.fl-chat-popup {
+	min-height: 100vh;
+	margin: 0;
+	background: var(--wp--preset--color--ink);
+	display: flex;
+}
+body.fl-chat-popup .fl-rail {
+	flex: 1;
+	border: none;
+	border-radius: 0;
+}
+body.fl-chat-popup .fl-chat {
+	max-height: none; /* the window itself is the scroll boundary here */
+}
+
+/* Rumble mirror controls, relocated into the rail header (2026-07-23, merged
+   chat) — same row-that-wraps layout the old standalone accordion used. */
+.fl-rail__subhead {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 10px;
+	padding: 10px 15px;
+	border-bottom: 1px solid var(--wp--preset--color--line);
+	font-size: .78rem;
+	color: var(--wp--preset--color--muted);
+}
+.fl-rumble-mirror__hide-bots { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.fl-rumble-mirror__join {
+	font-family: var(--wp--preset--font-family--mono);
+	font-size: .68rem;
+	letter-spacing: .06em;
+	text-transform: uppercase;
+	color: var(--wp--preset--color--gold);
+	text-decoration: none;
+}
+.fl-rumble-mirror__join:hover { color: #f0c96c; }
+/* Same [hidden]-vs-class-display gotcha as .fl-account__form and
+   .fl-tip-panel — hidden = true/false (rumble-mirror.js) is otherwise beaten
+   by browsers treating this as a normal inline link once styled. */
+.fl-rumble-mirror__join[hidden] { display: none; }
+
+/* Bounded + internally scrolling (2026-07-23) — without a max-height this
+   grows without limit as messages accumulate over a show, stretching the
+   whole page rather than the chat box itself (Austin's "bizarrely long
+   module" report). 440px roughly matches the hero player's own height so
+   the rail doesn't awkwardly dwarf or shrink it. */
+.fl-chat { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 210px; max-height: 440px; overflow-y: auto; }
 .fl-msg { display: flex; gap: 9px; font-size: .82rem; }
 .fl-msg__av { width: 26px; height: 26px; border-radius: 50%; flex: none; background: linear-gradient(135deg, var(--wp--preset--color--gold-deep), #6b4f9a); }
 .fl-msg__who { font-weight: 700; color: var(--wp--preset--color--headline); font-size: .78rem; margin-right: 6px; }
@@ -591,6 +963,13 @@ button.fl-mini-live {
 }
 .fl-tag--mod { background: rgba(230,186,87,.12); color: var(--wp--preset--color--gold); }
 .fl-tag--patron { background: rgba(91,139,208,.16); color: var(--wp--preset--color--blue); }
+.fl-tag--rumble-source { background: rgba(255,255,255,.06); color: var(--wp--preset--color--muted); }
+/* Rumble-sourced messages carried over into the merged feed (assets/js/
+   rumble-mirror.js) — same dim-and-hide treatment the old standalone mirror
+   gave bot accounts, now scoped to the shared feed. The [data-fl="chat-feed"]
+   scope keeps this from touching anything outside the chat rail. */
+.fl-chat .fl-msg--bot { opacity: .6; }
+.fl-chat.fl-hide-rumble-bots .fl-msg--bot { display: none; }
 .fl-msg--rant {
 	background: rgba(230,186,87,.12);
 	border: 1px solid var(--wp--preset--color--gold-deep);
@@ -625,6 +1004,235 @@ button.fl-mini-live {
 .fl-tipchips button:hover { background: rgba(230,186,87,.24); }
 .fl-tipchips button.fl-tipchips__hot { background: var(--wp--preset--color--gold); color: #1a130a; }
 
+/* ---------- Tip panel (Phase 3, task E) ---------- */
+.fl-tip-panel {
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid var(--wp--preset--color--line);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+/* The `hidden` DOM property/attribute must win over the rule above — a
+   class selector otherwise beats the UA stylesheet's [hidden] rule, which
+   would leave the panel (and the custom-amount row below) visible before
+   any chip is ever clicked. Same gotcha already handled explicitly for
+   .fl-rumble-mirror__join. */
+.fl-tip-panel[hidden],
+.fl-tip-panel__custom[hidden],
+.fl-tip-panel__onetap[hidden],
+.fl-tip-panel__save-card[hidden] { display: none; }
+.fl-tip-panel__amount {
+	font-family: var(--wp--preset--font-family--mono);
+	font-weight: 700;
+	font-size: .82rem;
+	color: var(--wp--preset--color--gold);
+}
+.fl-tip-panel__custom { display: flex; align-items: center; gap: 6px; }
+.fl-tip-panel__custom span { color: var(--wp--preset--color--muted); font-family: var(--wp--preset--font-family--mono); }
+.fl-tip-panel__custom input {
+	flex: 1;
+	background: var(--wp--preset--color--ink);
+	border: 1px solid var(--wp--preset--color--line-bright);
+	border-radius: 8px;
+	padding: 8px 10px;
+	color: var(--wp--preset--color--headline);
+	font-family: var(--wp--preset--font-family--sans);
+	font-size: .84rem;
+}
+/* Square's hosted card iframe lands here — a plain bordered box so it reads
+   as a real input even before the SDK finishes attaching. */
+.fl-tip-panel__card {
+	background: var(--wp--preset--color--ink);
+	border: 1px solid var(--wp--preset--color--line-bright);
+	border-radius: 8px;
+	padding: 10px;
+	min-height: 40px;
+}
+.fl-tip-panel__disclaimer { font-size: .66rem; color: var(--wp--preset--color--faint); }
+.fl-tip-panel input[type="text"] {
+	background: var(--wp--preset--color--ink);
+	border: 1px solid var(--wp--preset--color--line-bright);
+	border-radius: 8px;
+	padding: 8px 10px;
+	color: var(--wp--preset--color--headline);
+	font-family: var(--wp--preset--font-family--sans);
+	font-size: .84rem;
+	width: 100%;
+	box-sizing: border-box;
+}
+.fl-tip-panel__actions { display: flex; gap: 7px; }
+.fl-tip-panel__submit {
+	flex: 1;
+	background: var(--wp--preset--color--gold);
+	color: #1a130a;
+	font-weight: 700;
+	font-size: .82rem;
+	border: none;
+	border-radius: 8px;
+	padding: 9px 0;
+	cursor: pointer;
+}
+.fl-tip-panel__submit:hover { background: #f0c96c; }
+.fl-tip-panel__submit:disabled { opacity: .6; cursor: default; }
+.fl-tip-panel__cancel {
+	background: none;
+	border: 1px solid var(--wp--preset--color--line-bright);
+	color: var(--wp--preset--color--muted);
+	font-size: .82rem;
+	border-radius: 8px;
+	padding: 9px 14px;
+	cursor: pointer;
+}
+.fl-tip-panel__status { font-size: .78rem; color: var(--wp--preset--color--gold); min-height: 1.2em; }
+.fl-tip-panel__status--error { color: var(--wp--preset--color--red-bright); }
+
+/* Task F: the one-tap saved-card fast path, shown above the normal card
+   field only when a logged-in visitor already has a card on file. */
+.fl-tip-panel__onetap {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 10px;
+	background: rgba(230, 186, 87, .08);
+	border: 1px solid var(--wp--preset--color--gold-deep);
+	border-radius: 8px;
+}
+.fl-tip-panel__onetap-btn {
+	background: var(--wp--preset--color--gold);
+	color: #1a130a;
+	font-weight: 700;
+	font-size: .82rem;
+	border: none;
+	border-radius: 8px;
+	padding: 9px 0;
+	cursor: pointer;
+}
+.fl-tip-panel__onetap-btn:hover { background: #f0c96c; }
+.fl-tip-panel__onetap-btn:disabled { opacity: .6; cursor: default; }
+.fl-tip-panel__onetap-or {
+	text-align: center;
+	font-size: .68rem;
+	color: var(--wp--preset--color--faint);
+}
+
+/* Task F: the save-card consent checkbox, shown only when logged in. */
+.fl-tip-panel__save-card {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	font-size: .7rem;
+	line-height: 1.4;
+	color: var(--wp--preset--color--muted);
+	cursor: pointer;
+}
+.fl-tip-panel__save-card input { margin-top: 2px; flex-shrink: 0; }
+
+/* ---------- On-site chat — prompt, composer, reactions (Phase 3, task C) ---------- */
+.fl-chat-prompt { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; padding: 6px 2px; }
+.fl-chat-prompt__label { font-size: .84rem; color: var(--wp--preset--color--muted); margin: 0; }
+.fl-chat-prompt__form { display: flex; gap: 7px; width: 100%; }
+.fl-chat-prompt__form input,
+.fl-composer__form input {
+	flex: 1;
+	min-width: 0;
+	background: var(--wp--preset--color--ink);
+	border: 1px solid var(--wp--preset--color--line-bright);
+	border-radius: 8px;
+	padding: 9px 11px;
+	color: var(--wp--preset--color--headline);
+	font-family: var(--wp--preset--font-family--sans);
+	font-size: .84rem;
+}
+.fl-chat-prompt__form button,
+.fl-composer__form button {
+	background: var(--wp--preset--color--gold);
+	color: #1a130a;
+	font-weight: 700;
+	font-size: .8rem;
+	border: none;
+	border-radius: 8px;
+	padding: 9px 14px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.fl-chat-prompt__form button:hover,
+.fl-composer__form button:hover { background: #f0c96c; }
+
+.fl-chat .fl-msg__av { overflow: hidden; }
+.fl-chat .fl-msg__av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+
+/* New messages slide/fade in — the "flashy" entrance PHASE-0 asked for. */
+@keyframes fl-msg-enter {
+	from { opacity: 0; transform: translateY(6px); }
+	to   { opacity: 1; transform: translateY(0); }
+}
+.fl-msg--enter { animation: fl-msg-enter .25s ease-out; }
+
+.fl-composer {
+	border-top: 1px solid var(--wp--preset--color--line);
+	padding: 10px 14px 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.fl-composer__identity { font-size: .72rem; color: var(--wp--preset--color--muted); }
+.fl-composer__identity strong { color: var(--wp--preset--color--headline); }
+.fl-composer__change {
+	background: none;
+	border: none;
+	padding: 0;
+	color: var(--wp--preset--color--gold);
+	font-size: .72rem;
+	text-decoration: underline;
+	cursor: pointer;
+}
+.fl-composer__reactions { display: flex; gap: 4px; }
+.fl-composer__reactions button {
+	background: var(--wp--preset--color--ink-raised);
+	border: 1px solid var(--wp--preset--color--line);
+	border-radius: 999px;
+	font-size: .9rem;
+	line-height: 1;
+	padding: 5px 8px;
+	cursor: pointer;
+	transition: transform .12s, border-color .12s;
+}
+.fl-composer__reactions button:hover { transform: translateY(-1px); border-color: var(--wp--preset--color--gold-deep); }
+.fl-composer__form { display: flex; gap: 7px; }
+
+/* Floating reaction bursts — an ambient layer above the rail, not part of
+   the scrolling message history (never persisted as a real chat line, see
+   chat.js's REACTION_FIELD marker). */
+.fl-reaction-layer {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	overflow: hidden;
+	z-index: 5;
+}
+.fl-reaction-burst {
+	position: absolute;
+	bottom: 90px;
+	font-size: 1.4rem;
+	animation: fl-reaction-float 1.8s ease-out forwards;
+}
+@keyframes fl-reaction-float {
+	0%   { opacity: 0; transform: translateY(0) scale(.6); }
+	15%  { opacity: 1; transform: translateY(-10px) scale(1.05); }
+	100% { opacity: 0; transform: translateY(-140px) scale(1); }
+}
+
+/* ---------- Rumble chat badges (Phase 3, task B; merged into .fl-chat
+   2026-07-23 — see .fl-rail__subhead and .fl-tag--rumble-source above) ---------- */
+.fl-tag--rumble-verified { background: rgba(91,139,208,.16); color: var(--wp--preset--color--blue); }
+.fl-tag--rumble-sub { background: rgba(230,186,87,.12); color: var(--wp--preset--color--gold); }
+.fl-tag--rumble-whale { background: rgba(223,59,64,.14); color: var(--wp--preset--color--red-bright); }
+
+@media (max-width: 560px) {
+	.fl-rail__subhead { flex-direction: column; align-items: flex-start; }
+}
+
 .fl-section { margin-top: 34px !important; }
 .fl-section:first-child { margin-top: 0 !important; }
 
@@ -653,13 +1261,19 @@ button.fl-mini-live {
 .fl-section-head a:hover { color: var(--wp--preset--color--gold); }
 
 /* ---------- Lead story + headline stack ---------- */
-.fl-lead {
-	border-radius: var(--fl-radius-card);
-	overflow: hidden;
-	border: 1px solid var(--wp--preset--color--line);
-	background: var(--wp--preset--color--surface);
-}
-.fl-lead .fl-thumb { aspect-ratio: 16 / 9; position: relative; background: linear-gradient(135deg,#3b2140,#221433 60%,#141019); }
+/* .fl-thumb is a <span> (category-rail.php, newsroom-front.php, etc.) — a
+   <span> defaults to display:inline, and `aspect-ratio` has NO EFFECT on an
+   inline box (CSS spec). Every context below only ever set aspect-ratio/
+   background, never `display`, so the box was silently collapsing to fit
+   just its inline .fl-cat-tag text — a sliver, not the intended photo box —
+   found & fixed 2026-07-24 (Austin: "the image doesn't fill the entire
+   box"). `position: relative` here too: .fl-cat-tag is position:absolute
+   and needs this to anchor to the thumb itself; without it, on cards where
+   no ancestor happened to be positioned, the badge could end up positioned
+   relative to some far-off ancestor instead — the likely cause of a "NEWS"
+   tag once seen floating disconnected from its card. */
+.fl-thumb { display: block; position: relative; }
+.fl-lead .fl-thumb { aspect-ratio: 16 / 9; background: linear-gradient(135deg,#3b2140,#221433 60%,#141019); }
 .fl-cat-tag {
 	position: absolute;
 	top: 13px;
@@ -845,6 +1459,16 @@ button.fl-mini-live {
 	white-space: nowrap;
 }
 .fl-newsletter-form button:hover { background: #f0c86a !important; }
+.fl-newsletter-form button:disabled { opacity: .6; cursor: default; }
+.fl-newsletter__status {
+	position: relative;
+	width: 100%;
+	font-size: .78rem;
+	color: var(--wp--preset--color--gold);
+	min-height: 1.2em;
+	margin-top: 4px;
+}
+.fl-newsletter__status--error { color: var(--wp--preset--color--red-bright); }
 
 /* ---------- Support band ---------- */
 .fl-support-band {
@@ -997,6 +1621,7 @@ a.fl-tier:hover { border-color: var(--wp--preset--color--gold-deep); }
 .fl-showcard.is-live { border-color: var(--wp--preset--color--red); }
 /* Hidden until show-grid.js confirms the channel is actually live via the
    same poller endpoint the homepage hero reads — never a static claim. */
+.fl-showcard__live[hidden] { display: none; }
 .fl-showcard__live {
 	display: inline-flex;
 	align-items: center;
@@ -1142,6 +1767,30 @@ a.fl-tier:hover { border-color: var(--wp--preset--color--gold-deep); }
 	.fl-story { grid-template-columns: 76px 1fr; }
 	.fl-wordmark__sub { display: none; }
 }
+/* Static-nav hamburger (2026-07-23) — replaces the wp:navigation block's
+   built-in overlayMenu. Below this width the inline links collapse into a
+   dropdown toggled by .fl-nav-toggle (assets/js/site.js flips .is-open). The
+   dropdown anchors to .fl-masthead (position:sticky is its containing block),
+   so it drops full-width just under the header bar. */
+@media (max-width: 860px) {
+	.fl-nav-toggle { display: inline-flex; }
+	.fl-nav-menu {
+		position: absolute;
+		top: 100%;
+		left: 0;
+		right: 0;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0;
+		background: rgba(15,13,21,.98);
+		border-bottom: 1px solid var(--wp--preset--color--line);
+		padding: 6px 0;
+		display: none;
+	}
+	.fl-nav-menu.is-open { display: flex; }
+	.fl-nav-menu a { display: block; padding: 13px 22px; }
+	.fl-nav-menu a:hover { background: var(--wp--preset--color--surface); }
+}
 @media (max-width: 600px) {
 	/* Masthead search + Support button force nowrap (header.html); at phone
 	   widths there isn't room for logo + nav toggle + search + Support, and
@@ -1153,4 +1802,6 @@ a.fl-tier:hover { border-color: var(--wp--preset--color--gold-deep); }
 @media (prefers-reduced-motion: reduce) {
 	.fl-pulse { animation: none; }
 	.fl-card, .fl-play { transition: none; }
+	.fl-msg--enter { animation: none; }
+	.fl-reaction-burst { animation: none; display: none; }
 }

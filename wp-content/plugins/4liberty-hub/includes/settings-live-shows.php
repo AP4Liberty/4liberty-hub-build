@@ -40,6 +40,7 @@ function fourliberty_hub_register_live_shows_menu() {
 		if ( $screen_hook !== $hook ) {
 			return;
 		}
+		wp_enqueue_media(); // cover-image picker (same as Shop Ad / Dark Channel image ads)
 		$src = FOURLIBERTY_HUB_URL . 'assets/js/admin-live-shows.js';
 		$path = FOURLIBERTY_HUB_PATH . 'assets/js/admin-live-shows.js';
 		wp_enqueue_script( 'fourliberty-hub-admin-live-shows', $src, array(), file_exists( $path ) ? filemtime( $path ) : FOURLIBERTY_HUB_VERSION, true );
@@ -151,7 +152,14 @@ function fourliberty_hub_live_shows_maybe_save() {
 		$shows[ $key ] = array(
 			'name'            => sanitize_text_field( $row['name'] ?? $key ),
 			'host'            => sanitize_text_field( $row['host'] ?? '' ),
+			'schedule'        => sanitize_text_field( $row['schedule'] ?? '' ),
 			'enabled'         => ! empty( $row['enabled'] ),
+			// Shown as the hero player's background whenever this show is
+			// live (2026-07-24) — Rumble's Live Stream API has no thumbnail
+			// field at all (confirmed in PHASE-0-FINDINGS.md), so a real
+			// per-second preview isn't possible; this is the closest owner-
+			// controllable substitute for the flat idle gradient.
+			'coverImage'      => empty( $row['coverImage'] ) ? '' : esc_url_raw( $row['coverImage'] ),
 			'gatedTitleMatch' => sanitize_text_field( $row['gatedTitleMatch'] ?? '' ),
 			'gatedLabel'      => sanitize_text_field( $row['gatedLabel'] ?? '' ),
 			'gatedUrl'        => empty( $row['gatedUrl'] ) ? '' : esc_url_raw( $row['gatedUrl'] ),
@@ -277,11 +285,13 @@ function fourliberty_hub_render_live_shows() {
 					$is_new     = ! isset( $saved_shows[ $key ] );
 					$name       = $saved['name'] ?? fourliberty_hub_guess_show_name( $key );
 					$host       = $saved['host'] ?? '';
+					$schedule   = $saved['schedule'] ?? '';
 					$enabled    = ! isset( $saved['enabled'] ) || $saved['enabled']; // default on for new/unset
-					$gate_match = $saved['gatedTitleMatch'] ?? '';
-					$gate_label = $saved['gatedLabel'] ?? 'Subscribe on Rumble to watch live →';
-					$gate_url   = $saved['gatedUrl'] ?? '';
-					$live_info  = isset( $channels_by_key[ $key ] ) ? $channels_by_key[ $key ] : null;
+					$gate_match  = $saved['gatedTitleMatch'] ?? '';
+					$gate_label  = $saved['gatedLabel'] ?? 'Subscribe on Rumble to watch live →';
+					$gate_url    = $saved['gatedUrl'] ?? '';
+					$cover_image = $saved['coverImage'] ?? '';
+					$live_info   = isset( $channels_by_key[ $key ] ) ? $channels_by_key[ $key ] : null;
 					?>
 					<div class="fl-hub-row" draggable="true" data-key="<?php echo esc_attr( $key ); ?>" style="background:#fff;border:1px solid #dcdcde;border-radius:4px;margin-bottom:10px;padding:14px 16px;">
 						<div style="display:flex;align-items:flex-start;gap:12px;">
@@ -326,16 +336,38 @@ function fourliberty_hub_render_live_shows() {
 										<input type="text" class="regular-text" style="width:100%;" name="fourliberty_shows[<?php echo esc_attr( $key ); ?>][host]" value="<?php echo esc_attr( $host ); ?>" placeholder="<?php esc_attr_e( 'e.g. with Austin Petersen', 'fourliberty-hub' ); ?>" />
 									</label>
 									<label style="font-size:12px;color:#3c434a;grid-column:1 / -1;">
+										<?php esc_html_e( 'Schedule (shown in the homepage ticker + Shows page)', 'fourliberty-hub' ); ?>
+										<input type="text" class="regular-text" style="width:100%;" name="fourliberty_shows[<?php echo esc_attr( $key ); ?>][schedule]" value="<?php echo esc_attr( $schedule ); ?>" placeholder="<?php esc_attr_e( 'e.g. Weekday mornings · 7–9A CT', 'fourliberty-hub' ); ?>" />
+									</label>
+									<div style="font-size:12px;color:#3c434a;grid-column:1 / -1;">
+										<?php
+										/* Cover image (2026-07-24) — Rumble's Live Stream API has no
+										   thumbnail field at all (confirmed in PHASE-0-FINDINGS.md), so
+										   this is the closest owner-controllable substitute for the flat
+										   idle background: shown as the hero player's background
+										   whenever this specific show is live (live-state.js's
+										   applyHero()). Same wp.media picker as Shop Ad / Dark Channel
+										   image ads. */
+										esc_html_e( 'Cover image (shown behind the player while this show is live)', 'fourliberty-hub' );
+										?>
+										<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+											<span class="fl-hub-cover-preview" style="width:100px;height:56px;border-radius:4px;border:1px solid #dcdcde;background:#f0f0f1 center/cover no-repeat;<?php echo $cover_image ? 'background-image:url(' . esc_url( $cover_image ) . ');' : ''; ?>"></span>
+											<input type="hidden" class="fl-hub-cover-url" name="fourliberty_shows[<?php echo esc_attr( $key ); ?>][coverImage]" value="<?php echo esc_attr( $cover_image ); ?>" />
+											<button type="button" class="button fl-hub-choose-cover"><?php esc_html_e( 'Choose image', 'fourliberty-hub' ); ?></button>
+											<button type="button" class="button-link-delete fl-hub-remove-cover" style="<?php echo $cover_image ? '' : 'display:none;'; ?>"><?php esc_html_e( 'Remove', 'fourliberty-hub' ); ?></button>
+										</div>
+									</div>
+									<label style="font-size:12px;color:#3c434a;grid-column:1 / -1;">
+										<?php esc_html_e( "This show's Rumble channel (used for the off-air schedule list, the /shows/ page, and the subscribe link below when it's members-only)", 'fourliberty-hub' ); ?>
+										<input type="url" class="regular-text" style="width:100%;" name="fourliberty_shows[<?php echo esc_attr( $key ); ?>][gatedUrl]" value="<?php echo esc_attr( $gate_url ); ?>" placeholder="https://rumble.com/c/..." />
+									</label>
+									<label style="font-size:12px;color:#3c434a;grid-column:1 / -1;">
 										<?php esc_html_e( 'Members-only when the live title contains', 'fourliberty-hub' ); ?>
 										<input type="text" class="regular-text" style="width:100%;" name="fourliberty_shows[<?php echo esc_attr( $key ); ?>][gatedTitleMatch]" value="<?php echo esc_attr( $gate_match ); ?>" placeholder="<?php esc_attr_e( 'Leave blank = never gated', 'fourliberty-hub' ); ?>" />
 									</label>
 									<label style="font-size:12px;color:#3c434a;">
 										<?php esc_html_e( 'Subscribe CTA label', 'fourliberty-hub' ); ?>
 										<input type="text" class="regular-text" style="width:100%;" name="fourliberty_shows[<?php echo esc_attr( $key ); ?>][gatedLabel]" value="<?php echo esc_attr( $gate_label ); ?>" />
-									</label>
-									<label style="font-size:12px;color:#3c434a;">
-										<?php esc_html_e( 'Subscribe CTA link', 'fourliberty-hub' ); ?>
-										<input type="url" class="regular-text" style="width:100%;" name="fourliberty_shows[<?php echo esc_attr( $key ); ?>][gatedUrl]" value="<?php echo esc_attr( $gate_url ); ?>" placeholder="https://rumble.com/c/..." />
 									</label>
 								</div>
 							</div>

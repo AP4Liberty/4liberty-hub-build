@@ -28,10 +28,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Matches the roster + keys in fourliberty_live_shows_config() (functions.php)
  * so the live badge wiring lines up with the same channel keys the poller
- * reports. If that config's admin panel (task E) starts storing show blurbs
- * too, this array should read from get_option() the same way instead of
- * being hardcoded here.
+ * reports. Blurbs stay hardcoded here (the admin panel doesn't store those),
+ * but `detail` (the schedule line) is overridden below from that same config
+ * wherever Austin has set one via 4Liberty Hub → Live Shows — the "Schedule"
+ * field added 2026-07-23 alongside the homepage ticker, so an owner-edited
+ * airtime shows up here too instead of only in the ticker.
  */
+$fourliberty_live_shows = fourliberty_live_shows_config();
 $fourliberty_shows = array(
 	array(
 		'key'    => 'WUA',
@@ -75,13 +78,16 @@ $fourliberty_shows = array(
 <div class="wp-block-group">
 	<!-- wp:html -->
 	<div class="fl-showgrid">
-		<?php foreach ( $fourliberty_shows as $fourliberty_show ) : ?>
+		<?php foreach ( $fourliberty_shows as $fourliberty_show ) :
+			$fourliberty_configured_schedule = $fourliberty_live_shows['shows'][ $fourliberty_show['key'] ]['schedule'] ?? '';
+			$fourliberty_detail = $fourliberty_configured_schedule ? esc_html( $fourliberty_configured_schedule ) : $fourliberty_show['detail'];
+			?>
 		<a class="fl-showcard" href="/" data-fl-show="<?php echo esc_attr( $fourliberty_show['key'] ); ?>">
 			<span class="fl-showcard__live" data-fl="show-live-badge" hidden><span class="fl-pulse"></span>Live now</span>
 			<h4><?php echo esc_html( $fourliberty_show['name'] ); ?></h4>
 			<p><?php echo esc_html( $fourliberty_show['blurb'] ); ?></p>
-			<?php if ( $fourliberty_show['detail'] ) : ?>
-			<span class="fl-showcard__detail"><?php echo wp_kses_post( $fourliberty_show['detail'] ); ?></span>
+			<?php if ( $fourliberty_detail ) : ?>
+			<span class="fl-showcard__detail"><?php echo wp_kses_post( $fourliberty_detail ); ?></span>
 			<?php endif; ?>
 			<span class="fl-showcard__cta">Watch on the network &rarr;</span>
 		</a>

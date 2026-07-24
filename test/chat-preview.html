@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>chat.js — manual visual preview</title>
+<!--
+	Manual/visual test harness for assets/js/chat.js (Phase 3, task C), same
+	purpose as test/rumble-mirror-preview.html: an isolated page to verify
+	real-site JS behavior. UNLIKE that one, this hits the REAL deployed
+	Netlify backend and the REAL Stream sandbox app — nothing here is mocked,
+	because the whole point is confirming the actual vertical slice (mint
+	token -> connect -> watch channel -> send/receive a real message) works,
+	not just that the code looks right. Each successful connect creates one
+	real (if throwaway) Stream user.
+
+	NOT part of `npm test`. Open directly in a browser (file:// or via a
+	static server) — no WordPress needed.
+
+	IMPORTANT — CORS caveat: chat-token.mts's origin allowlist (see
+	netlify/lib/cors.mts) does NOT include localhost/static-preview origins
+	by design (never `*`), so opening this file from a local server will
+	correctly show the "Chat's taking a break" fallback rather than
+	connecting — that's the CORS protection working, not a bug. This page is
+	still useful for verifying the DOM/prompt/composer UI renders and
+	behaves correctly. To verify the actual connect -> watch -> send ->
+	receive round trip against real Stream, either (a) have Austin add this
+	page's real origin to the ALLOWED_ORIGINS Netlify env var temporarily, or
+	(b) write a throwaway Node script using the real `stream-chat` package —
+	Node has no CORS enforcement (a browser-only mechanism), so it exercises
+	the identical protocol without needing an allowlisted origin. Verified
+	exactly this way during the Task C build (two independent StreamChat
+	clients — NOT the getInstance() singleton, which collides across
+	simulated users in one process — connected, watched the same channel,
+	and exchanged a real-time message).
+-->
+<style>
+	:root {
+		--wp--preset--color--ink: #0f0d15;
+		--wp--preset--color--ink-raised: #15121e;
+		--wp--preset--color--surface: #1b1726;
+		--wp--preset--color--surface-deep: #221d30;
+		--wp--preset--color--line: #2c2740;
+		--wp--preset--color--line-bright: #39324f;
+		--wp--preset--color--headline: #f1ecf6;
+		--wp--preset--color--body-text: #d6d0e2;
+		--wp--preset--color--muted: #948da8;
+		--wp--preset--color--faint: #6f6885;
+		--wp--preset--color--gold: #e6ba57;
+		--wp--preset--color--gold-deep: #c99a3f;
+		--wp--preset--color--red: #df3b40;
+		--wp--preset--color--red-bright: #f2585d;
+		--wp--preset--color--blue: #5b8bd0;
+		--wp--preset--color--white: #ffffff;
+		--wp--preset--font-family--serif: Georgia, "Times New Roman", serif;
+		--wp--preset--font-family--sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+		--wp--preset--font-family--mono: ui-monospace, "SF Mono", Consolas, monospace;
+	}
+	body {
+		background: var(--wp--preset--color--ink);
+		color: var(--wp--preset--color--body-text);
+		font-family: var(--wp--preset--font-family--sans);
+		margin: 0;
+		padding: 24px;
+	}
+	.harness {
+		max-width: 344px;
+		margin: 0 auto 20px;
+		background: var(--wp--preset--color--surface-deep);
+		border: 1px solid var(--wp--preset--color--line-bright);
+		border-radius: 12px;
+		padding: 14px 16px;
+		font-size: .82rem;
+	}
+	.harness h1 { font-size: .95rem; margin: 0 0 8px; color: var(--wp--preset--color--headline); }
+	.harness p { margin: 0 0 8px; color: var(--wp--preset--color--muted); }
+	#log {
+		max-width: 344px;
+		margin: 0 auto;
+		font-family: var(--wp--preset--font-family--mono);
+		font-size: .68rem;
+		color: var(--wp--preset--color--muted);
+		white-space: pre-wrap;
+		word-break: break-all;
+		max-height: 200px;
+		overflow-y: auto;
+	}
+	.rail-wrap { max-width: 344px; margin: 0 auto; }
+</style>
+</head>
+<body>
+
+	<div class="harness">
+		<h1>chat.js — live preview (REAL backend + REAL Stream)</h1>
+		<p>This connects for real. Pick a name below and chat — open this same page in two tabs to test two-way messaging.</p>
+	</div>
+
+	<div class="rail-wrap">
+		<!-- The exact hero-live.php rail structure, verbatim. -->
+		<aside class="fl-rail" data-fl="chat-rail">
+			<div class="fl-rail__head">
+				<span class="fl-title"><span class="fl-pulse"></span> Live Chat</span>
+				<span class="fl-rail__count" data-fl="chat-count">&nbsp;</span>
+			</div>
+			<div class="fl-chat" data-fl="chat-feed">
+				<div class="fl-msg">
+					<span class="fl-msg__av"></span>
+					<span class="fl-msg__body"><span class="fl-msg__who">4Liberty Network</span> Chat opens when a show is live &mdash; check back soon.</span>
+				</div>
+			</div>
+			<div class="fl-tipbar" data-fl="tip-bar">
+				<div class="fl-tipbar__label">&#128176; Tip the show</div>
+				<div class="fl-tipchips">
+					<button type="button" data-amount="5">$5</button>
+					<button type="button" class="fl-tipchips__hot" data-amount="17.76">$17.76</button>
+					<button type="button" data-amount="50">$50</button>
+					<button type="button" data-amount="custom">Custom</button>
+				</div>
+			</div>
+		</aside>
+	</div>
+
+	<pre id="log"></pre>
+
+	<link rel="stylesheet" href="../wp-content/themes/fourliberty/assets/css/editorial.css" />
+
+	<script>
+		window.fourlibertyChatTokenEndpoint = { url: 'https://4liberty-poller.netlify.app/api/chat-token' };
+		window.fourlibertyTipCreateEndpoint = { url: 'https://4liberty-poller.netlify.app/api/tip-create' };
+		window.fourlibertyTipRepeatEndpoint = { url: 'https://4liberty-poller.netlify.app/api/tip-repeat' };
+		window.fourlibertyAuthRequestEndpoint = { url: 'https://4liberty-poller.netlify.app/api/auth-request' };
+		window.fourlibertyAuthVerifyEndpoint = { url: 'https://4liberty-poller.netlify.app/api/auth-verify' };
+		// Real Sandbox app from Task A — same values functions.php ships as
+		// fourliberty_chat_tips_config()'s defaults.
+		window.fourlibertyChatTips = {
+			chatEnabled: true,
+			mode: 'open',
+			tipPresets: [ 5, 17.76, 50 ],
+			squareApplicationId: 'sandbox-sq0idb-i1ElCdQZdIJIwzLoN5HREA',
+			squareLocationId: 'LNTAXJD5J1AZD',
+			squareEnvironment: 'sandbox',
+		};
+
+		(function () {
+			var origFetch = window.fetch;
+			window.fetch = function () {
+				var url = arguments[0];
+				var el = document.getElementById( 'log' );
+				el.textContent += '[' + new Date().toLocaleTimeString() + '] fetch -> ' + url + '\n';
+				return origFetch.apply( window, arguments ).then( function ( res ) {
+					el.textContent += '[' + new Date().toLocaleTimeString() + '] <- ' + res.status + '\n';
+					el.scrollTop = el.scrollHeight;
+					return res;
+				} );
+			};
+		})();
+	</script>
+	<script src="../wp-content/themes/fourliberty/assets/js/chat.js"></script>
+	<script src="../wp-content/themes/fourliberty/assets/js/tips.js"></script>
+	<script src="../wp-content/themes/fourliberty/assets/js/account.js"></script>
+</body>
+</html>

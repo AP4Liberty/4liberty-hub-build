@@ -17,42 +17,11 @@
 
 import { getStore } from '@netlify/blobs';
 import type { Config, Context } from '@netlify/functions';
+import { corsHeaders } from '../lib/cors.mts';
 import type { LiveStatePayload } from '../lib/sanitize.mts';
 
 const STORE_NAME = 'live-state';
 const BLOB_KEY = 'current';
-
-const DEFAULT_ALLOWED_ORIGINS = [
-	'https://wakeupamericashow.com',
-	'https://www.wakeupamericashow.com',
-	'https://4libertynetwork.com',
-	'https://www.4libertynetwork.com',
-];
-
-/**
- * Extra origins (staging hosts, mainly) come from an env var so a staging
- * hostname change doesn't need a code deploy — GoDaddy staging hostnames
- * change every time the staging site is recreated, which during the July 2026
- * security incident happened four times.
- */
-function allowedOrigins(): string[] {
-	const extra = ( Netlify.env.get( 'ALLOWED_ORIGINS' ) ?? '' )
-		.split( ',' )
-		.map( ( o ) => o.trim() )
-		.filter( Boolean );
-	return [ ...DEFAULT_ALLOWED_ORIGINS, ...extra ];
-}
-
-function corsHeaders( origin: string | null ): Record< string, string > {
-	if ( origin && allowedOrigins().includes( origin ) ) {
-		return {
-			'access-control-allow-origin': origin,
-			'access-control-allow-methods': 'GET, OPTIONS',
-			vary: 'Origin',
-		};
-	}
-	return { vary: 'Origin' };
-}
 
 export default async ( req: Request, _context: Context ) => {
 	const cors = corsHeaders( req.headers.get( 'origin' ) );

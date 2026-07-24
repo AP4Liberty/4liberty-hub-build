@@ -39,6 +39,14 @@
 	var STREAM_SDK_URL = 'https://cdn.jsdelivr.net/npm/stream-chat@9.50.2/+esm';
 	var NAME_STORAGE_KEY = 'fl-chat-display-name';
 	var REACTION_EMOJIS = [ '🔥', '👏', '😂', '❤️', '🎉' ];
+	// The quick row above stays fixed (muscle memory, one-tap) — this is the
+	// expanded set shown behind the "more" toggle for anyone who wants a
+	// wider range of reactions than the 5 defaults.
+	var MORE_REACTION_EMOJIS = [
+		'😀', '😆', '😮', '😢', '😡', '🤔', '🙄', '😎',
+		'👍', '👎', '💪', '🙌', '🙏', '🤝', '👀', '🤯',
+		'💯', '⚡', '🎯', '🚀', '⭐', '💰', '🇺🇸', '🦅'
+	];
 	// Marks a message as a floating reaction burst rather than a real chat
 	// line — text is still set (to the emoji) so nothing renders blank if
 	// this field is ever missed by an older client.
@@ -345,22 +353,55 @@
 		} );
 		identity.appendChild( change );
 
-		var reactions = document.createElement( 'div' );
-		reactions.className = 'fl-composer__reactions';
-		REACTION_EMOJIS.forEach( function ( emoji ) {
+		function sendReactionEmoji( emoji ) {
+			if ( ! channel ) {
+				return;
+			}
+			var payload = {};
+			payload.text = emoji;
+			payload[ REACTION_FIELD ] = emoji;
+			channel.sendMessage( payload ).catch( function () {} );
+		}
+
+		function makeReactionButton( emoji ) {
 			var btn = document.createElement( 'button' );
 			btn.type = 'button';
 			btn.setAttribute( 'aria-label', 'Send ' + emoji + ' reaction' );
 			btn.textContent = emoji;
 			btn.addEventListener( 'click', function () {
-				if ( channel ) {
-					var payload = {};
-					payload.text = emoji;
-					payload[ REACTION_FIELD ] = emoji;
-					channel.sendMessage( payload ).catch( function () {} );
-				}
+				sendReactionEmoji( emoji );
 			} );
-			reactions.appendChild( btn );
+			return btn;
+		}
+
+		var reactions = document.createElement( 'div' );
+		reactions.className = 'fl-composer__reactions';
+		REACTION_EMOJIS.forEach( function ( emoji ) {
+			reactions.appendChild( makeReactionButton( emoji ) );
+		} );
+
+		var moreToggle = document.createElement( 'button' );
+		moreToggle.type = 'button';
+		moreToggle.className = 'fl-composer__reactions-toggle';
+		moreToggle.setAttribute( 'aria-label', 'More reactions' );
+		moreToggle.setAttribute( 'aria-expanded', 'false' );
+		moreToggle.textContent = '+';
+		reactions.appendChild( moreToggle );
+
+		var moreGrid = document.createElement( 'div' );
+		moreGrid.className = 'fl-composer__reactions-grid';
+		moreGrid.hidden = true;
+		MORE_REACTION_EMOJIS.forEach( function ( emoji ) {
+			var btn = makeReactionButton( emoji );
+			btn.addEventListener( 'click', function () {
+				moreGrid.hidden = true;
+				moreToggle.setAttribute( 'aria-expanded', 'false' );
+			} );
+			moreGrid.appendChild( btn );
+		} );
+		moreToggle.addEventListener( 'click', function () {
+			moreGrid.hidden = ! moreGrid.hidden;
+			moreToggle.setAttribute( 'aria-expanded', moreGrid.hidden ? 'false' : 'true' );
 		} );
 
 		var form = document.createElement( 'form' );
@@ -390,6 +431,7 @@
 
 		wrap.appendChild( identity );
 		wrap.appendChild( reactions );
+		wrap.appendChild( moreGrid );
 		wrap.appendChild( form );
 
 		els.chatRail.insertBefore( wrap, els.tipBar || null );

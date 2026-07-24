@@ -22,7 +22,7 @@ const STORE_NAME = 'wp-config';
 const BLOB_KEY = 'current';
 const FETCH_TIMEOUT_MS = 8000;
 
-const WP_CONFIG_URL = 'https://wakeupamericashow.com/wp-json/fourliberty/v1/server-config';
+const WP_CONFIG_URL = 'https://4libertynetwork.com/wp-json/fourliberty/v1/server-config';
 
 export default async () => {
 	try {

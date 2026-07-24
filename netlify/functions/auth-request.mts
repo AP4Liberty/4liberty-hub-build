@@ -29,7 +29,7 @@ const EMAIL_RATE_LIMIT_WINDOW_SECONDS = 900;
 // homepage today (hero-live.php is a front-page-only pattern) — a visitor
 // requesting a link from any other page still lands somewhere that can
 // complete the login. Revisit if that ever changes.
-const SITE_ROOT = 'https://wakeupamericashow.com/';
+const SITE_ROOT = 'https://4libertynetwork.com/';
 const VERIFY_PARAM = 'fl_verify';
 
 function json( body: unknown, status: number, cors: Record< string, string > ): Response {

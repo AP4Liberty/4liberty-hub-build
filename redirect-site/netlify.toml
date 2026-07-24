@@ -1,0 +1,18 @@
+# Old-domain redirect site — Phase 7 cutover.
+#
+# Purpose-built, standalone Netlify site whose only job is a path-preserving
+# 301 from wakeupamericashow.com to 4libertynetwork.com. Deliberately kept
+# separate from the 4liberty-poller project: a force catch-all redirect here
+# would otherwise intercept the poller's own /api/* function endpoints if it
+# lived in the same site. See PHASE-7-CUTOVER-PLAN.md for the full rationale.
+#
+# No functions, no build step — this is the entire deployable.
+
+[build]
+  publish = "."
+
+[[redirects]]
+  from = "/*"
+  to = "https://4libertynetwork.com/:splat"
+  status = 301
+  force = true

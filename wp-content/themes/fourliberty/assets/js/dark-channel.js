@@ -249,8 +249,6 @@
 			slide = document.createElement( 'a' );
 			slide.className = 'fl-dark-channel__slide fl-dark-channel__slide--post';
 			slide.href = item.url || '#';
-			slide.target = '_blank';
-			slide.rel = 'noopener';
 			if ( item.thumbnail ) {
 				slide.style.backgroundImage = 'url(' + item.thumbnail + ')';
 			} else {

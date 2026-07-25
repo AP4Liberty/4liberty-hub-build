@@ -517,6 +517,13 @@
 				currentDisplayName = data.userName;
 				currentHasSavedCard = !! data.hasSavedCard;
 				currentCardLast4 = data.cardLast4 || null;
+				if ( session && data.sessionToken && window.FLHub.identity ) {
+					// Slides the session's expiry (PHASE-8-BUILD-PLAN.md
+					// Decision 11b) — chat-token.mts reissues a fresh-window
+					// token on every authenticated connect; persisting it here
+					// is what makes an active visitor never get logged out.
+					window.FLHub.identity.updateSessionToken( data.sessionToken );
+				}
 				if ( ! session ) {
 					// Only the anonymous path persists a "remember my typed
 					// name" shortcut — a logged-in identity is already

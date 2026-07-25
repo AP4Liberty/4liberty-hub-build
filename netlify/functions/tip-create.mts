@@ -90,7 +90,8 @@ export default async ( req: Request, context: Context ) => {
 	// A valid session, if present, is the source of truth for who's tipping
 	// and where a saved card gets linked — never trust the client's own
 	// account claim, only what verifySession() itself resolves.
-	const user = typeof b.sessionToken === 'string' && b.sessionToken ? await verifySession( b.sessionToken ) : null;
+	const verified = typeof b.sessionToken === 'string' && b.sessionToken ? await verifySession( b.sessionToken ) : null;
+	const user = verified?.user ?? null;
 	const displayName = ( user && user.displayName ) || sanitizeDisplayName( b.displayName ) || 'A supporter';
 
 	let result;
@@ -138,7 +139,18 @@ export default async ( req: Request, context: Context ) => {
 		}
 	}
 
-	return json( { success: true, amountCents: result.amountCents, cardWasSaved }, 200, cors );
+	// Slides the tipper's session too (Decision 11b) — the whole point is
+	// that ANY authenticated request refreshes it, not chat alone.
+	return json(
+		{
+			success: true,
+			amountCents: result.amountCents,
+			cardWasSaved,
+			...( verified ? { sessionToken: verified.sessionToken } : {} ),
+		},
+		200,
+		cors
+	);
 };
 
 export const config: Config = {

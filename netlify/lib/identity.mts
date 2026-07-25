@@ -15,19 +15,40 @@
  * lookup on top) — an acceptable risk for a community chat identity.
  */
 
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { getStore } from '@netlify/blobs';
 
 const USERS_STORE = 'identity-users';
 const NONCE_STORE = 'identity-nonces';
+const LOGIN_CODE_STORE = 'identity-login-codes';
 
 const MAGIC_LINK_TTL_SECONDS = 15 * 60; // 15 minutes
+// Refreshed on every verified use (Decision 11b, PHASE-8-BUILD-PLAN.md) — an
+// active member never hits this ceiling in practice. SESSION_MAX_LIFETIME_
+// SECONDS below is the hard stop that matters.
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
+// Absolute cap from the ORIGINAL login, even for a visitor who never stops
+// using the site — a session should still eventually require a fresh login.
+const SESSION_MAX_LIFETIME_SECONDS = 180 * 24 * 60 * 60; // 180 days
 
 const MAX_EMAIL_LENGTH = 254; // RFC 5321's practical limit
 // Deliberately loose — real validation is "did the email actually receive
 // the link," which no regex can substitute for.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// The exact set of pages that ever need a visitor returned to them after
+// login — an ALLOWLIST, not a generic "starts with /" check
+// (PHASE-8-BUILD-PLAN.md Decision 9). A generic check is exactly the kind of
+// thing that has subtle bypasses (protocol-relative //evil.com, backslash
+// tricks some browsers normalize to a forward slash, encoded variants), and
+// an open redirect on a LOGIN flow is a real phishing tool, not a nuisance
+// bug. Add a path here only when a real page needs someone returned to it.
+const ALLOWED_RETURN_PATHS = [ '/', '/community/' ];
+
+const LOGIN_CODE_LENGTH = 6;
+// Rides the same window as the magic link it's paired with — nothing to
+// track separately, it just shouldn't outlive the token it points to.
+const LOGIN_CODE_TTL_SECONDS = MAGIC_LINK_TTL_SECONDS;
 
 function getSecret(): string {
 	const secret = Netlify.env.get( 'IDENTITY_JWT_SECRET' );
@@ -47,6 +68,20 @@ export function sanitizeEmail( raw: unknown ): string | null {
 		return null;
 	}
 	return trimmed;
+}
+
+/**
+ * Validates a post-login return path by EXACT match against
+ * ALLOWED_RETURN_PATHS only — no prefix matching, no trailing-slash
+ * normalization, nothing clever that could hide a bypass. Never throws; a
+ * missing or invalid path just means the caller falls back to its own
+ * default.
+ */
+export function sanitizeReturnPath( raw: unknown ): string | null {
+	if ( typeof raw !== 'string' ) {
+		return null;
+	}
+	return ALLOWED_RETURN_PATHS.includes( raw ) ? raw : null;
 }
 
 /**
@@ -135,15 +170,27 @@ interface SessionPayload {
 	purpose: 'session';
 	userId: string;
 	email: string;
+	// When this session's identity was FIRST established — carried forward
+	// unchanged across every slide (Decision 11b) so SESSION_MAX_LIFETIME_
+	// SECONDS below is measured from the original login, not the last visit.
+	iat: number;
 	exp: number;
 }
 
-function signSessionToken( userId: string, email: string ): string {
+/**
+ * `iat` is supplied by the caller rather than always "now" — a brand-new
+ * session passes the current time; verifySession()'s slide passes the
+ * ORIGINAL iat through unchanged, which is what keeps the 180-day cap
+ * anchored to first login instead of resetting on every visit.
+ */
+function signSessionToken( userId: string, email: string, iat: number ): string {
+	const now = Math.floor( Date.now() / 1000 );
 	return sign( {
 		purpose: 'session',
 		userId,
 		email,
-		exp: Math.floor( Date.now() / 1000 ) + SESSION_TTL_SECONDS,
+		iat,
+		exp: Math.min( now + SESSION_TTL_SECONDS, iat + SESSION_MAX_LIFETIME_SECONDS ),
 	} );
 }
 
@@ -158,7 +205,45 @@ export interface UserRecord {
 	squareCardId: string | null;
 	cardLast4: string | null;
 	supporter: boolean;
+	// Added Phase 8 (Task A) — defaulted for pre-existing records by
+	// normalizeUser() below, never assumed present on a raw read.
+	role: 'member' | 'moderator' | 'admin';
+	banned: boolean;
+	// null = permanent (once banned, checked by isBanned() below). Only
+	// meaningful when banned is true.
+	bannedUntil: string | null;
+	postCount: number;
 	createdAt: string;
+}
+
+/**
+ * A permanent ban has `bannedUntil: null`; a timed one expires on its own —
+ * checked here so every caller doesn't need to remember the null-means-
+ * forever convention. Used by chat-token.mts (Task A); Task C's community
+ * write endpoints will call this too (PHASE-8-BUILD-PLAN.md Decision 7).
+ */
+export function isBanned( user: UserRecord ): boolean {
+	if ( ! user.banned ) {
+		return false;
+	}
+	return ! user.bannedUntil || new Date( user.bannedUntil ).getTime() > Date.now();
+}
+
+/**
+ * Defaults the fields added after some records already existed
+ * (role/banned/bannedUntil/postCount, PHASE-8-BUILD-PLAN.md Task A) — every
+ * read goes through getUser() below, so an old record is defaulted on load
+ * instead of needing a one-time migration. Every OTHER field has been part
+ * of the schema since Phase 3 and every write path has always set it.
+ */
+function normalizeUser( user: UserRecord ): UserRecord {
+	return {
+		...user,
+		role: user.role ?? 'member',
+		banned: user.banned ?? false,
+		bannedUntil: user.bannedUntil ?? null,
+		postCount: user.postCount ?? 0,
+	};
 }
 
 // consistency: 'strong' throughout this file — confirmed by direct testing
@@ -171,7 +256,8 @@ export interface UserRecord {
 async function getUser( email: string ): Promise< UserRecord | null > {
 	try {
 		const store = getStore( { name: USERS_STORE, consistency: 'strong' } );
-		return ( ( await store.get( email, { type: 'json' } ) ) as UserRecord | null ) ?? null;
+		const raw = ( ( await store.get( email, { type: 'json' } ) ) as UserRecord | null ) ?? null;
+		return raw ? normalizeUser( raw ) : null;
 	} catch {
 		return null;
 	}
@@ -243,6 +329,10 @@ export async function verifyMagicLinkAndCreateSession(
 		squareCardId: null,
 		cardLast4: null,
 		supporter: false,
+		role: 'member',
+		banned: false,
+		bannedUntil: null,
+		postCount: 0,
 		createdAt: new Date().toISOString(),
 	};
 	// A returning visitor's freshly-typed display name updates the record —
@@ -257,21 +347,120 @@ export async function verifyMagicLinkAndCreateSession(
 		userId: user.userId,
 		email: user.email,
 		displayName: user.displayName,
-		sessionToken: signSessionToken( user.userId, user.email ),
+		sessionToken: signSessionToken( user.userId, user.email, Math.floor( Date.now() / 1000 ) ),
 	};
 }
 
+const loginCodeKey = ( email: string, code: string ): string => `${ email }:${ code }`;
+
+/** Cryptographically random, zero-padded to LOGIN_CODE_LENGTH digits. */
+function randomLoginCode(): string {
+	return String( randomInt( 0, 10 ** LOGIN_CODE_LENGTH ) ).padStart( LOGIN_CODE_LENGTH, '0' );
+}
+
 /**
- * Verifies a session token and looks up the current user record. Used by
- * Task F to back the authenticated chat-token and tip-repeat paths. `null`
+ * Pairs a 6-digit code with an already-minted magic-link token, so a
+ * visitor can complete login by typing the code instead of clicking the
+ * link — the fix for the #1 real-world magic-link failure mode: tapping the
+ * link inside an email app's OWN in-app browser (Gmail's, etc.) completes
+ * the login in THAT browser's localStorage, not the one the visitor typed
+ * their email into, so they land back on the site still logged out. A typed
+ * code never leaves the page (PHASE-8-BUILD-PLAN.md Decision 11a).
+ *
+ * The code is just an alternate lookup key for the SAME token — not a
+ * separate secret with its own trust path — so verifyLoginCode() below can
+ * hand off to the exact same verifyMagicLinkAndCreateSession() the link
+ * itself uses. One verification path, two ways to reach it.
+ */
+export async function createLoginCode( email: string, magicLinkToken: string ): Promise< string > {
+	const code = randomLoginCode();
+	const store = getStore( { name: LOGIN_CODE_STORE, consistency: 'strong' } );
+	await store.setJSON( loginCodeKey( email, code ), {
+		token: magicLinkToken,
+		exp: Math.floor( Date.now() / 1000 ) + LOGIN_CODE_TTL_SECONDS,
+	} );
+	return code;
+}
+
+/**
+ * Resolves a typed 6-digit code back to its magic-link token and completes
+ * login exactly as verifyMagicLinkAndCreateSession() would from the link
+ * itself. `null` on any failure (unknown/expired code, malformed input, or
+ * a since-invalid underlying token) — the CALLER (auth-code.mts) is
+ * responsible for rate-limiting attempts; this function only resolves one
+ * lookup and never throws.
+ *
+ * Six digits is a million guesses — brute-forceable in a way a signed token
+ * is not — which is why this is rate-limited at the endpoint layer far
+ * tighter than the link path.
+ *
+ * Burns the code on the FIRST lookup that finds it, valid or not — BEST-
+ * EFFORT get-then-delete, same caveat as this file's nonce store (see the
+ * header): only genuine simultaneity slips through, not "guessed some time
+ * later."
+ */
+export async function verifyLoginCode(
+	rawEmail: unknown,
+	rawCode: unknown
+): Promise< { userId: string; email: string; displayName: string; sessionToken: string } | null > {
+	const email = sanitizeEmail( rawEmail );
+	const code = typeof rawCode === 'string' ? rawCode.trim() : '';
+	if ( ! email || ! /^\d{6}$/.test( code ) ) {
+		return null;
+	}
+
+	const store = getStore( { name: LOGIN_CODE_STORE, consistency: 'strong' } );
+	const key = loginCodeKey( email, code );
+
+	let entry: { token: string; exp: number } | null = null;
+	try {
+		entry = ( ( await store.get( key, { type: 'json' } ) ) as { token: string; exp: number } | null ) ?? null;
+	} catch {
+		return null;
+	}
+	if ( entry ) {
+		try {
+			await store.delete( key );
+		} catch {
+			// Worst case a second guess within the same instant also succeeds
+			// — see this function's header on Blobs' lack of an atomic primitive.
+		}
+	}
+	if ( ! entry || entry.exp < Math.floor( Date.now() / 1000 ) ) {
+		return null;
+	}
+
+	return verifyMagicLinkAndCreateSession( entry.token );
+}
+
+export interface VerifiedSession {
+	user: UserRecord;
+	/**
+	 * A reissued token with a slid expiry (Decision 11b, PHASE-8-BUILD-
+	 * PLAN.md) — callers should send this back to the client to replace its
+	 * stored copy. The OLD token the client presented keeps working until
+	 * its own (now-stale) exp either way, so a caller that forgets this
+	 * doesn't break anything, it just doesn't slide.
+	 */
+	sessionToken: string;
+}
+
+/**
+ * Verifies a session token, looks up the current user record, and slides
+ * the session's expiry. Used by chat-token.mts and the tip endpoints. `null`
  * on any failure (bad/expired token, or the user record has since vanished).
  */
-export async function verifySession( token: unknown ): Promise< UserRecord | null > {
+export async function verifySession( token: unknown ): Promise< VerifiedSession | null > {
 	const payload = verify< SessionPayload >( token, 'session' );
 	if ( ! payload ) {
 		return null;
 	}
-	return getUser( payload.email );
+	const user = await getUser( payload.email );
+	if ( ! user ) {
+		return null;
+	}
+	const iat = typeof payload.iat === 'number' ? payload.iat : Math.floor( Date.now() / 1000 );
+	return { user, sessionToken: signSessionToken( payload.userId, payload.email, iat ) };
 }
 
 /**

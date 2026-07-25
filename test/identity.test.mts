@@ -21,7 +21,9 @@ import { describe, it } from 'node:test';
 import {
 	deriveUserId,
 	sanitizeEmail,
+	sanitizeReturnPath,
 	signMagicLinkToken,
+	verifyLoginCode,
 	verifyMagicLinkTokenSignature,
 } from '../netlify/lib/identity.mts';
 
@@ -89,6 +91,48 @@ describe( 'deriveUserId', () => {
 	it( 'is safe to use as a Stream user id (prefixed, url-safe characters only)', () => {
 		const id = deriveUserId( 'someone@example.com' );
 		assert.match( id, /^user-[A-Za-z0-9_-]+$/ );
+	} );
+} );
+
+describe( 'sanitizeReturnPath', () => {
+	it( 'accepts the exact allowlisted paths', () => {
+		assert.equal( sanitizeReturnPath( '/' ), '/' );
+		assert.equal( sanitizeReturnPath( '/community/' ), '/community/' );
+	} );
+
+	it( 'rejects non-string input without throwing', () => {
+		for ( const input of [ null, undefined, 42, {}, [], true ] ) {
+			assert.equal( sanitizeReturnPath( input ), null );
+		}
+	} );
+
+	it( 'rejects a path not on the allowlist, even a plausible-looking one', () => {
+		for ( const bad of [ '/blog/', '/support', '/community', '//community/' ] ) {
+			assert.equal( sanitizeReturnPath( bad ), null );
+		}
+	} );
+
+	// The whole point of an EXACT-match allowlist (Decision 9) is that none
+	// of these need their own special-case rejection logic — they just fail
+	// to equal any allowlisted string, the same as any other bad input.
+	it( 'rejects open-redirect probes', () => {
+		for ( const bad of [
+			'//evil.com',
+			'///evil.com',
+			'https://evil.com',
+			'http://evil.com/',
+			'/\\evil.com',
+			'/\\/evil.com',
+			'/%2f%2fevil.com',
+			'/%5cevil.com',
+			'/community/../../evil.com',
+			'/community/%2e%2e/evil.com',
+			' /',
+			'/ ',
+			'/community/ ',
+		] ) {
+			assert.equal( sanitizeReturnPath( bad ), null );
+		}
 	} );
 } );
 
@@ -175,5 +219,39 @@ describe( 'verifyMagicLinkTokenSignature — tampering and malformed input', () 
 			'a-completely-wrong-secret'
 		);
 		assert.equal( verifyMagicLinkTokenSignature( token ), null );
+	} );
+} );
+
+// verifyLoginCode() (PHASE-8-BUILD-PLAN.md Decision 11a) only reaches Netlify
+// Blobs AFTER its email/code shape guard clause passes — every case below
+// stays on the guard-clause side, so these run with no store access at all,
+// same split as the rest of this file. The "code found in the store and
+// resolves to a real session" path is Blobs-touching and is exercised by
+// deploying and curling /api/auth-code instead, matching how
+// verifyMagicLinkAndCreateSession() itself is tested.
+describe( 'verifyLoginCode — malformed input never reaches storage', () => {
+	it( 'rejects a bad email before ever looking at the code', async () => {
+		for ( const badEmail of [ 'not-an-email', '', null, undefined, 42 ] ) {
+			assert.equal( await verifyLoginCode( badEmail, '123456' ), null );
+		}
+	} );
+
+	it( 'rejects anything that is not exactly 6 digits', async () => {
+		// NOTE: every case here must stay malformed even after the internal
+		// trim() — e.g. '  123456  ' would trim down to a VALID shape and
+		// reach getStore(), so it deliberately isn't in this list.
+		for ( const badCode of [
+			'12345', // too short
+			'1234567', // too long
+			'abcdef', // not digits
+			'12345a', // mixed
+			'123 456', // internal whitespace — doesn't trim away
+			'', // empty
+			null,
+			undefined,
+			123456, // a number, not a string
+		] ) {
+			assert.equal( await verifyLoginCode( 'someone@example.com', badCode ), null );
+		}
 	} );
 } );

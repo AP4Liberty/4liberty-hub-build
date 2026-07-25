@@ -16,7 +16,7 @@
 import type { Config, Context } from '@netlify/functions';
 import { getServerConfig } from '../lib/config.mts';
 import { corsHeaders } from '../lib/cors.mts';
-import { verifySession } from '../lib/identity.mts';
+import { isBanned, verifySession } from '../lib/identity.mts';
 import { checkRateLimit } from '../lib/ratelimit.mts';
 import { mintAuthenticatedToken, mintGuestToken, sanitizeDisplayName } from '../lib/stream.mts';
 
@@ -62,14 +62,21 @@ export default async ( req: Request, context: Context ) => {
 	// Tried first, regardless of mode — a logged-in visitor always gets
 	// their stable identity. Falls through (not a hard error) on a missing
 	// or stale/expired session token, so a visitor whose 30-day session just
-	// lapsed isn't locked out of "open" chat, only "gated" chat.
+	// lapsed isn't locked out of "open" chat, only "gated" chat. A BANNED
+	// session is different — that's a real, recognized identity being
+	// deliberately refused, so it fails hard instead of quietly falling
+	// through to an anonymous mint (PHASE-8-BUILD-PLAN.md Decision 7).
 	if ( typeof b.sessionToken === 'string' && b.sessionToken ) {
-		const user = await verifySession( b.sessionToken );
-		if ( user ) {
+		const verified = await verifySession( b.sessionToken );
+		if ( verified ) {
+			const { user, sessionToken } = verified;
+			if ( isBanned( user ) ) {
+				return json( { error: 'account_banned' }, 403, cors );
+			}
 			try {
 				const authed = await mintAuthenticatedToken( user );
 				return json(
-					{ ...authed, hasSavedCard: !! user.squareCardId, cardLast4: user.cardLast4 },
+					{ ...authed, hasSavedCard: !! user.squareCardId, cardLast4: user.cardLast4, sessionToken },
 					200,
 					cors
 				);

@@ -15,7 +15,7 @@
 import type { Config, Context } from '@netlify/functions';
 import { corsHeaders } from '../lib/cors.mts';
 import { sendMagicLinkEmail } from '../lib/email.mts';
-import { sanitizeEmail, signMagicLinkToken } from '../lib/identity.mts';
+import { createLoginCode, sanitizeEmail, sanitizeReturnPath, signMagicLinkToken } from '../lib/identity.mts';
 import { checkRateLimit } from '../lib/ratelimit.mts';
 import { sanitizeDisplayName } from '../lib/stream.mts';
 
@@ -25,11 +25,16 @@ const IP_RATE_LIMIT_WINDOW_SECONDS = 900; // 15 minutes
 const EMAIL_RATE_LIMIT_MAX = 3;
 const EMAIL_RATE_LIMIT_WINDOW_SECONDS = 900;
 
-// The chat rail (and the account UI's login prompt) only exists on the
-// homepage today (hero-live.php is a front-page-only pattern) — a visitor
-// requesting a link from any other page still lands somewhere that can
-// complete the login. Revisit if that ever changes.
-const SITE_ROOT = 'https://4libertynetwork.com/';
+// Where a visitor lands after clicking the magic link. Defaults to the
+// homepage; a caller can request a different (allowlisted — see
+// sanitizeReturnPath in ../lib/identity.mts) destination via returnPath, so
+// e.g. someone who tried to post from /community/ before logging in comes
+// back to /community/ instead of the homepage (PHASE-8-BUILD-PLAN.md
+// Decision 9). Validated with an EXACT-match allowlist, not a generic
+// "starts with /" check — an open redirect on a login flow is a real
+// phishing tool, not just a nuisance bug.
+const SITE_ORIGIN = 'https://4libertynetwork.com';
+const DEFAULT_RETURN_PATH = '/';
 const VERIFY_PARAM = 'fl_verify';
 
 function json( body: unknown, status: number, cors: Record< string, string > ): Response {
@@ -78,11 +83,18 @@ export default async ( req: Request, context: Context ) => {
 	// PHASE-3-BUILD-PLAN.md's "the account is an optional upgrade" flow —
 	// empty is fine, verifyMagicLinkAndCreateSession() falls back sensibly.
 	const displayName = sanitizeDisplayName( b.displayName ) || '';
+	const returnPath = sanitizeReturnPath( b.returnPath ) ?? DEFAULT_RETURN_PATH;
 
 	const token = signMagicLinkToken( email, displayName );
-	const magicLinkUrl = `${ SITE_ROOT }?${ VERIFY_PARAM }=${ encodeURIComponent( token ) }`;
+	const magicLinkUrl = `${ SITE_ORIGIN }${ returnPath }?${ VERIFY_PARAM }=${ encodeURIComponent( token ) }`;
 
-	const sent = await sendMagicLinkEmail( email, magicLinkUrl );
+	// The code is just an alternate way to redeem the SAME token (see
+	// createLoginCode()'s own doc comment) — generated even though most
+	// visitors will just click the link, since the email always offers both
+	// (PHASE-8-BUILD-PLAN.md Decision 11a).
+	const loginCode = await createLoginCode( email, token );
+
+	const sent = await sendMagicLinkEmail( email, magicLinkUrl, loginCode );
 	if ( ! sent ) {
 		// Honest, unlike a failed chat/tip attempt — silently claiming success
 		// on a login's one and only delivery mechanism would strand a visitor

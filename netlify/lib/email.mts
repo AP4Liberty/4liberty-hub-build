@@ -23,8 +23,15 @@ const EVENT_METRIC_NAME = 'Requested Magic Link';
  * (auth-request.mts) still tells the visitor to check their email either
  * way (Decision 8's fail-safe spirit: never expose that the ESP is down),
  * but logs this for real troubleshooting.
+ *
+ * `loginCode` rides along as a second event property (`login_code`) purely
+ * so the Klaviyo Flow's email template can print it — this file still has
+ * no opinion on the email's copy/design (that stays entirely in Klaviyo's
+ * UI, Golden Rule #3). Added PHASE-8-BUILD-PLAN.md Decision 11a: a typed
+ * code alongside the link, so a visitor never has to leave the page they're
+ * on to finish logging in.
  */
-export async function sendMagicLinkEmail( email: string, magicLinkUrl: string ): Promise< boolean > {
+export async function sendMagicLinkEmail( email: string, magicLinkUrl: string, loginCode: string ): Promise< boolean > {
 	const apiKey = Netlify.env.get( 'KLAVIYO_API_KEY' );
 	if ( ! apiKey ) {
 		console.error( '[email] Klaviyo is not configured (missing KLAVIYO_API_KEY).' );
@@ -45,7 +52,7 @@ export async function sendMagicLinkEmail( email: string, magicLinkUrl: string ):
 					attributes: {
 						metric: { data: { type: 'metric', attributes: { name: EVENT_METRIC_NAME } } },
 						profile: { data: { type: 'profile', attributes: { email } } },
-						properties: { magic_link_url: magicLinkUrl },
+						properties: { magic_link_url: magicLinkUrl, login_code: loginCode },
 						time: new Date().toISOString(),
 					},
 				},

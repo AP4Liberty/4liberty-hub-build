@@ -229,6 +229,11 @@ function fourliberty_assets() {
 		'fourlibertyAuthVerifyEndpoint',
 		array( 'url' => fourliberty_auth_verify_endpoint() )
 	);
+	wp_localize_script(
+		'fourliberty-account',
+		'fourlibertyAuthCodeEndpoint',
+		array( 'url' => fourliberty_auth_code_endpoint() )
+	);
 
 	// "The Daily Brief" newsletter signup. No-ops immediately if
 	// [data-fl="newsletter-form"] isn't on the page. Independent of the
@@ -327,6 +332,17 @@ function fourliberty_auth_verify_endpoint() {
 	return defined( 'FOURLIBERTY_AUTH_VERIFY_ENDPOINT' )
 		? FOURLIBERTY_AUTH_VERIFY_ENDPOINT
 		: 'https://4liberty-poller.netlify.app/api/auth-verify';
+}
+
+/**
+ * The auth-code Netlify function's public endpoint — same backend site.
+ * Completes login via the 6-digit code sent alongside the magic link
+ * (PHASE-8-BUILD-PLAN.md Decision 11a), same pattern as the other two.
+ */
+function fourliberty_auth_code_endpoint() {
+	return defined( 'FOURLIBERTY_AUTH_CODE_ENDPOINT' )
+		? FOURLIBERTY_AUTH_CODE_ENDPOINT
+		: 'https://4liberty-poller.netlify.app/api/auth-code';
 }
 
 /**

@@ -24,6 +24,9 @@
 	var AUTH_VERIFY_ENDPOINT =
 		( window.fourlibertyAuthVerifyEndpoint && window.fourlibertyAuthVerifyEndpoint.url ) ||
 		'https://4liberty-poller.netlify.app/api/auth-verify';
+	var AUTH_CODE_ENDPOINT =
+		( window.fourlibertyAuthCodeEndpoint && window.fourlibertyAuthCodeEndpoint.url ) ||
+		'https://4liberty-poller.netlify.app/api/auth-code';
 
 	var SESSION_STORAGE_KEY = 'fl-session';
 	var VERIFY_PARAM = 'fl_verify';
@@ -93,6 +96,21 @@
 		onChange: function ( callback ) {
 			changeListeners.push( callback );
 		},
+		/**
+		 * Persists a reissued token from a sliding session refresh
+		 * (PHASE-8-BUILD-PLAN.md Decision 11b) — called by chat.js and
+		 * tips.js whenever an authenticated response hands one back.
+		 * Deliberately does NOT re-render or notify change listeners: the
+		 * identity itself hasn't changed, only the token's expiry, so
+		 * there's nothing for chat.js/tips.js to react to.
+		 */
+		updateSessionToken: function ( newToken ) {
+			if ( ! session || ! newToken ) {
+				return;
+			}
+			session.token = newToken;
+			saveSession( session );
+		},
 	};
 
 	function clear( el ) {
@@ -143,41 +161,78 @@
 		toggle.className = 'fl-account__link';
 		toggle.textContent = 'Save your spot & enable one-tap tips — log in';
 
-		var form = document.createElement( 'form' );
-		form.className = 'fl-account__form';
-		form.hidden = true;
-		var input = document.createElement( 'input' );
-		input.type = 'email';
-		input.placeholder = 'you@example.com';
-		input.required = true;
-		input.autocomplete = 'email';
-		var submitBtn = document.createElement( 'button' );
-		submitBtn.type = 'submit';
-		submitBtn.textContent = 'Send link';
-		form.appendChild( input );
-		form.appendChild( submitBtn );
+		var emailForm = document.createElement( 'form' );
+		emailForm.className = 'fl-account__form';
+		emailForm.hidden = true;
+		var emailInput = document.createElement( 'input' );
+		emailInput.type = 'email';
+		emailInput.placeholder = 'you@example.com';
+		emailInput.required = true;
+		emailInput.autocomplete = 'email';
+		var sendBtn = document.createElement( 'button' );
+		sendBtn.type = 'submit';
+		sendBtn.textContent = 'Send link';
+		emailForm.appendChild( emailInput );
+		emailForm.appendChild( sendBtn );
+
+		// Revealed only after a successful send — the email always carries
+		// BOTH a link and a 6-digit code (PHASE-8-BUILD-PLAN.md Decision
+		// 11a). The code matters because tapping the link inside an email
+		// app's OWN in-app browser (Gmail's, etc.) completes login in THAT
+		// browser's storage, not this one — a typed code never leaves the
+		// page, so it works even when the link silently doesn't.
+		var codeForm = document.createElement( 'form' );
+		codeForm.className = 'fl-account__form';
+		codeForm.hidden = true;
+		var codeInput = document.createElement( 'input' );
+		codeInput.type = 'text';
+		codeInput.inputMode = 'numeric';
+		codeInput.autocomplete = 'one-time-code';
+		codeInput.placeholder = '6-digit code';
+		codeInput.maxLength = 6;
+		var verifyBtn = document.createElement( 'button' );
+		verifyBtn.type = 'submit';
+		verifyBtn.textContent = 'Verify';
+		codeForm.appendChild( codeInput );
+		codeForm.appendChild( verifyBtn );
 
 		var status = document.createElement( 'div' );
 		status.className = 'fl-account__status';
 
+		// Remembered so codeForm's submit doesn't need to ask for the email
+		// a second time — set only once requestLink() confirms the send.
+		var sentToEmail = '';
+
 		toggle.addEventListener( 'click', function () {
 			toggle.hidden = true;
-			form.hidden = false;
-			input.focus();
+			emailForm.hidden = false;
+			emailInput.focus();
 		} );
 
-		form.addEventListener( 'submit', function ( evt ) {
+		emailForm.addEventListener( 'submit', function ( evt ) {
 			evt.preventDefault();
-			requestLink( input.value.trim(), submitBtn, status );
+			var email = emailInput.value.trim();
+			requestLink( email, sendBtn, status, function () {
+				sentToEmail = email;
+				emailForm.hidden = true;
+				codeForm.hidden = false;
+				codeInput.focus();
+			} );
+		} );
+
+		codeForm.addEventListener( 'submit', function ( evt ) {
+			evt.preventDefault();
+			verifyCode( sentToEmail, codeInput.value.trim(), verifyBtn, status );
 		} );
 
 		row.appendChild( toggle );
-		row.appendChild( form );
+		row.appendChild( emailForm );
+		row.appendChild( codeForm );
 		row.appendChild( status );
 		els.container.appendChild( row );
 	}
 
-	function requestLink( email, submitBtn, status ) {
+	function requestLink( email, submitBtn, status, onSent ) {
 		if ( ! email ) {
 			return;
 		}
@@ -189,7 +244,14 @@
 		fetch( AUTH_REQUEST_ENDPOINT, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify( { email: email, displayName: displayName } ),
+			body: JSON.stringify( {
+				email: email,
+				displayName: displayName,
+				// Validated server-side against an allowlist (PHASE-8-BUILD-
+				// PLAN.md Decision 9) — an unrecognized path just falls back
+				// to the homepage there, so this never needs validating here.
+				returnPath: window.location.pathname,
+			} ),
 		} )
 			.then( function ( res ) {
 				return res.json().then( function ( data ) {
@@ -202,12 +264,64 @@
 					submitBtn.disabled = false;
 					return;
 				}
-				status.textContent = '📧 Check your email for a login link!';
+				status.textContent = '📧 Check your email — click the link, or enter the code below.';
+				if ( onSent ) {
+					onSent();
+				}
 			} )
 			.catch( function () {
 				status.textContent = 'That didn’t work — try again in a moment.';
 				submitBtn.disabled = false;
 			} );
+	}
+
+	/**
+	 * The code path (PHASE-8-BUILD-PLAN.md Decision 11a) — lands on the same
+	 * applyAuthSuccess() as the link path below, since /api/auth-code
+	 * resolves to the exact same session-creation logic server-side.
+	 */
+	function verifyCode( email, code, submitBtn, status ) {
+		if ( ! email || ! code ) {
+			return;
+		}
+		submitBtn.disabled = true;
+		status.textContent = 'Checking…';
+
+		fetch( AUTH_CODE_ENDPOINT, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify( { email: email, code: code } ),
+		} )
+			.then( function ( res ) {
+				return res.json().then( function ( data ) {
+					return { ok: res.ok, data: data };
+				} );
+			} )
+			.then( function ( result ) {
+				if ( ! result.ok || ! result.data.success ) {
+					status.textContent = 'That code didn’t work — check it, or use the link in the email instead.';
+					submitBtn.disabled = false;
+					return;
+				}
+				applyAuthSuccess( result.data );
+			} )
+			.catch( function () {
+				status.textContent = 'That code didn’t work — check it, or use the link in the email instead.';
+				submitBtn.disabled = false;
+			} );
+	}
+
+	/** Shared by the link path (verifyFromUrl) and the code path (verifyCode) below. */
+	function applyAuthSuccess( data ) {
+		session = {
+			token: data.sessionToken,
+			userId: data.userId,
+			email: data.email,
+			displayName: data.displayName,
+		};
+		saveSession( session );
+		render();
+		notifyChange();
 	}
 
 	function renderVerifying() {
@@ -233,15 +347,7 @@
 			} )
 			.then( function ( result ) {
 				if ( result.ok && result.data.success ) {
-					session = {
-						token: result.data.sessionToken,
-						userId: result.data.userId,
-						email: result.data.email,
-						displayName: result.data.displayName,
-					};
-					saveSession( session );
-					render();
-					notifyChange();
+					applyAuthSuccess( result.data );
 					return;
 				}
 				render();

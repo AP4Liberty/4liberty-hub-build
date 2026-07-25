@@ -54,10 +54,11 @@ export default async ( req: Request, context: Context ) => {
 	}
 	const b = body as Record< string, unknown >;
 
-	const user = typeof b.sessionToken === 'string' && b.sessionToken ? await verifySession( b.sessionToken ) : null;
-	if ( ! user ) {
+	const verified = typeof b.sessionToken === 'string' && b.sessionToken ? await verifySession( b.sessionToken ) : null;
+	if ( ! verified ) {
 		return json( { error: 'not_logged_in' }, 401, cors );
 	}
+	const { user, sessionToken } = verified;
 	if ( ! user.squareCardId || ! user.squareCustomerId ) {
 		return json( { error: 'no_saved_card' }, 400, cors );
 	}
@@ -94,7 +95,9 @@ export default async ( req: Request, context: Context ) => {
 		}
 	}
 
-	return json( { success: true, amountCents: result.amountCents }, 200, cors );
+	// Slides the tipper's session too (Decision 11b) — the whole point is
+	// that ANY authenticated request refreshes it, not chat alone.
+	return json( { success: true, amountCents: result.amountCents, sessionToken }, 200, cors );
 };
 
 export const config: Config = {

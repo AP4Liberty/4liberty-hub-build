@@ -210,6 +210,11 @@
 					setStatus( 'That didn’t go through — check your card details and try again.', true );
 					return;
 				}
+				if ( result.data.sessionToken && window.FLHub.identity ) {
+					// Slides the session's expiry (PHASE-8-BUILD-PLAN.md
+					// Decision 11b) — any authenticated request refreshes it.
+					window.FLHub.identity.updateSessionToken( result.data.sessionToken );
+				}
 				setStatus( '🎉 Thank you for the tip!' );
 				els.messageInput.value = '';
 				setTimeout( closePanel, 2500 );
@@ -266,6 +271,11 @@
 				if ( ! result.ok || ! result.data.success ) {
 					setStatus( 'That didn’t go through — try the card field below instead.', true );
 					return;
+				}
+				if ( result.data.sessionToken && window.FLHub.identity ) {
+					// Slides the session's expiry (PHASE-8-BUILD-PLAN.md
+					// Decision 11b) — any authenticated request refreshes it.
+					window.FLHub.identity.updateSessionToken( result.data.sessionToken );
 				}
 				setStatus( '🎉 Thank you for the tip!' );
 				els.messageInput.value = '';

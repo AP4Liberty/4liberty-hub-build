@@ -103,6 +103,11 @@ function fourliberty_hub_render_overview() {
 					<td><?php esc_html_e( 'The image + link for the homepage ad block below the video player.', 'fourliberty-hub' ); ?></td>
 					<td><?php esc_html_e( 'Live', 'fourliberty-hub' ); ?></td>
 				</tr>
+				<tr>
+					<td><?php esc_html_e( 'Community', 'fourliberty-hub' ); ?></td>
+					<td><?php esc_html_e( 'Pause switch, chat mode, spam limits, moderators, and the room name for the members\' posting + chat page.', 'fourliberty-hub' ); ?></td>
+					<td><?php esc_html_e( 'Settings live — the Community page itself is still being built', 'fourliberty-hub' ); ?></td>
+				</tr>
 			</tbody>
 		</table>
 	</div>

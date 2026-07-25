@@ -386,13 +386,49 @@ function fourliberty_chat_tips_config() {
 }
 
 /**
- * Public, read-only REST route exposing ONLY the two Chat & Tips fields
- * Netlify must enforce server-side (see fourliberty_chat_tips_config()'s
- * doc comment) — deliberately not the whole config. Nothing returned here
- * is sensitive, so this needs no authentication, matching the same
- * "public by design" precedent as the Netlify poller's own
- * /api/live-state. netlify/functions/poll-wp-config.mts polls this every
- * minute; chat-token.mts / tip-create.mts never call it directly.
+ * Community config consumed by the /server-config bridge below — the
+ * theme-side source of truth settings-community.php's admin screen writes
+ * to, same delegation pattern as fourliberty_chat_tips_config().
+ *
+ * @package fourliberty-hub
+ */
+function fourliberty_community_config() {
+	$defaults = array(
+		'paused'              => false,
+		'communityMode'       => 'open',
+		'postRateLimit'       => 5,
+		'replyRateLimit'      => 20,
+		'newAccountGateHours' => 24,
+		'moderatorEmails'     => array(),
+		'reservedNames'       => array(),
+		'roomName'            => 'The Lobby',
+	);
+
+	$stored = get_option( 'fourliberty_community_config' );
+	return is_array( $stored ) ? wp_parse_args( $stored, $defaults ) : $defaults;
+}
+
+/**
+ * Public, read-only REST route exposing the fields Netlify must enforce
+ * server-side, both for the homepage chat/tips AND (as of Phase 8) the
+ * Community page — deliberately not the whole config either way. Nothing
+ * returned here is sensitive, matching the same "public by design"
+ * precedent as the Netlify poller's own /api/live-state.
+ * netlify/functions/poll-wp-config.mts polls this every minute;
+ * chat-token.mts / tip-create.mts / the community write endpoints never
+ * call it directly.
+ *
+ * Moderator emails are hashed (SHA-256, lowercased first) before they leave
+ * this route — this show is a politically-exposed target, and a public,
+ * unauthenticated JSON endpoint broadcasting the moderator team's actual
+ * email addresses is an avoidable harassment/social-engineering surface.
+ * The addresses aren't secrets that unlock anything, so a keyless hash is
+ * enough: it defeats cold enumeration ("who are all the moderators") while
+ * still letting Netlify check "does THIS already-known, already-logged-in
+ * email match" by hashing it the same way. The community* fields are all
+ * prefixed on purpose — PHASE-8-BUILD-PLAN.md Decision 4/5 is explicit that
+ * the Community chat's mode must never be confused with the homepage
+ * chat's own `mode` field above.
  */
 function fourliberty_register_rest_routes() {
 	register_rest_route(
@@ -402,12 +438,29 @@ function fourliberty_register_rest_routes() {
 			'methods'             => 'GET',
 			'permission_callback' => '__return_true',
 			'callback'            => function () {
-				$config   = fourliberty_chat_tips_config();
+				$config    = fourliberty_chat_tips_config();
+				$community = fourliberty_community_config();
+
+				$moderator_hashes = array_map(
+					function ( $email ) {
+						return hash( 'sha256', strtolower( trim( $email ) ) );
+					},
+					(array) $community['moderatorEmails']
+				);
+
 				$response = new WP_REST_Response(
 					array(
-						'mode'        => ( 'gated' === $config['mode'] ) ? 'gated' : 'open',
-						'tipMinCents' => (int) round( floatval( $config['tipMinDollars'] ) * 100 ),
-						'tipMaxCents' => (int) round( floatval( $config['tipMaxDollars'] ) * 100 ),
+						'mode'                           => ( 'gated' === $config['mode'] ) ? 'gated' : 'open',
+						'tipMinCents'                    => (int) round( floatval( $config['tipMinDollars'] ) * 100 ),
+						'tipMaxCents'                    => (int) round( floatval( $config['tipMaxDollars'] ) * 100 ),
+						'communityPaused'                => ! empty( $community['paused'] ),
+						'communityMode'                  => ( 'gated' === $community['communityMode'] ) ? 'gated' : 'open',
+						'communityPostRateLimit'         => (int) $community['postRateLimit'],
+						'communityReplyRateLimit'        => (int) $community['replyRateLimit'],
+						'communityGateHours'             => (int) $community['newAccountGateHours'],
+						'communityModeratorEmailHashes'  => $moderator_hashes,
+						'communityReservedNames'         => array_values( (array) $community['reservedNames'] ),
+						'communityRoomName'               => (string) $community['roomName'],
 					)
 				);
 				// Discovered during Task H: GoDaddy's own gateway cache was

@@ -1,0 +1,215 @@
+<?php
+/**
+ * The ONLY way anything ever gets written into fl_community_post or its
+ * replies — two signature-gated REST routes (PHASE-8-BUILD-PLAN.md
+ * Decision 2). The browser never calls these directly; only Netlify's
+ * community-post.mts / community-reply.mts do, AFTER already verifying the
+ * visitor's session, checking bans, checking rate limits, and stripping
+ * HTML. Nothing here trusts the caller beyond the signature check — every
+ * field is still validated, because "already checked upstream" and "cannot
+ * be bypassed" are different guarantees, and this file only has the second
+ * one.
+ *
+ * Auth is a custom X-FL-Signature header — an HMAC-SHA256 of the raw
+ * request body, keyed by FOURLIBERTY_COMMUNITY_SECRET — NOT a WordPress
+ * Application Password. GoDaddy/Sucuri's edge has a confirmed habit of
+ * stripping Authorization headers on this site; a custom header sidesteps
+ * that fight entirely. The secret is a wp-config.php constant (never the
+ * database) and a matching Netlify env var of the same name — Austin enters
+ * both himself.
+ *
+ * @package fourliberty-hub
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+const FOURLIBERTY_COMMUNITY_MAX_DISPLAY_NAME = 30;
+const FOURLIBERTY_COMMUNITY_MAX_TITLE        = 200;
+const FOURLIBERTY_COMMUNITY_MAX_POST_BODY    = 10000;
+const FOURLIBERTY_COMMUNITY_MAX_REPLY_BODY   = 5000;
+const FOURLIBERTY_COMMUNITY_MAX_USER_ID      = 100;
+const FOURLIBERTY_COMMUNITY_ROLES            = array( 'member', 'moderator', 'admin' );
+
+/**
+ * hash_equals() specifically, never ===  — a non-constant-time compare here
+ * would reopen exactly the timing-attack class this whole HMAC scheme
+ * exists to close. Reads the RAW body (get_body(), not get_json_params())
+ * because the signature was computed over raw bytes on the Netlify side;
+ * anything that re-serializes the parsed JSON risks a byte-for-byte
+ * mismatch from key ordering or whitespace alone.
+ */
+function fourliberty_hub_verify_community_signature( WP_REST_Request $request ) {
+	if ( ! defined( 'FOURLIBERTY_COMMUNITY_SECRET' ) || ! FOURLIBERTY_COMMUNITY_SECRET ) {
+		return new WP_Error( 'community_not_configured', __( 'Community write access is not configured.', 'fourliberty-hub' ), array( 'status' => 503 ) );
+	}
+	$signature = $request->get_header( 'x-fl-signature' );
+	if ( ! $signature ) {
+		return new WP_Error( 'missing_signature', __( 'Missing signature.', 'fourliberty-hub' ), array( 'status' => 401 ) );
+	}
+	$expected = hash_hmac( 'sha256', $request->get_body(), FOURLIBERTY_COMMUNITY_SECRET );
+	if ( ! hash_equals( $expected, $signature ) ) {
+		return new WP_Error( 'bad_signature', __( 'Invalid signature.', 'fourliberty-hub' ), array( 'status' => 401 ) );
+	}
+	return true;
+}
+
+/** 'member' unless the caller sent one of the other two known roles. */
+function fourliberty_hub_community_sanitize_role( $raw ) {
+	return in_array( $raw, FOURLIBERTY_COMMUNITY_ROLES, true ) ? $raw : 'member';
+}
+
+/** 'publish' unless the caller explicitly asked for the link-gate hold. */
+function fourliberty_hub_community_sanitize_status( $raw ) {
+	return ( 'pending' === $raw ) ? 'pending' : 'publish';
+}
+
+function fourliberty_hub_community_create_post( WP_REST_Request $request ) {
+	$body = $request->get_json_params();
+	if ( ! is_array( $body ) ) {
+		return new WP_Error( 'invalid_json', __( 'Invalid request body.', 'fourliberty-hub' ), array( 'status' => 400 ) );
+	}
+
+	$user_id      = isset( $body['userId'] ) ? sanitize_text_field( (string) $body['userId'] ) : '';
+	$display_name = isset( $body['displayName'] ) ? sanitize_text_field( (string) $body['displayName'] ) : '';
+	// sanitize_text_field() strips ALL tags — belt and suspenders alongside
+	// whatever Netlify already stripped (PHASE-8-BUILD-PLAN.md: "strip on
+	// write AND escape on render — both, not either"). Title uses the same
+	// tag-stripping field function; body uses the textarea variant so
+	// newlines survive.
+	$title        = isset( $body['title'] ) ? sanitize_text_field( (string) $body['title'] ) : '';
+	$content      = isset( $body['body'] ) ? sanitize_textarea_field( (string) $body['body'] ) : '';
+	$role         = fourliberty_hub_community_sanitize_role( $body['role'] ?? null );
+	$status       = fourliberty_hub_community_sanitize_status( $body['status'] ?? null );
+
+	if ( '' === $user_id || strlen( $user_id ) > FOURLIBERTY_COMMUNITY_MAX_USER_ID ) {
+		return new WP_Error( 'invalid_user_id', __( 'Missing or invalid userId.', 'fourliberty-hub' ), array( 'status' => 400 ) );
+	}
+	if ( '' === $display_name || mb_strlen( $display_name ) > FOURLIBERTY_COMMUNITY_MAX_DISPLAY_NAME ) {
+		return new WP_Error( 'invalid_display_name', __( 'Missing or invalid displayName.', 'fourliberty-hub' ), array( 'status' => 400 ) );
+	}
+	if ( '' === $title || mb_strlen( $title ) > FOURLIBERTY_COMMUNITY_MAX_TITLE ) {
+		return new WP_Error( 'invalid_title', __( 'Missing or invalid title.', 'fourliberty-hub' ), array( 'status' => 400 ) );
+	}
+	if ( '' === $content || mb_strlen( $content ) > FOURLIBERTY_COMMUNITY_MAX_POST_BODY ) {
+		return new WP_Error( 'invalid_body', __( 'Missing or invalid body.', 'fourliberty-hub' ), array( 'status' => 400 ) );
+	}
+
+	$post_id = wp_insert_post(
+		array(
+			'post_type'      => FOURLIBERTY_COMMUNITY_POST_TYPE,
+			'post_title'     => $title,
+			'post_content'   => $content,
+			'post_status'    => $status,
+			// Closed at the WordPress level on purpose — see
+			// community-post-type.php's file header. Replies only ever
+			// arrive through fourliberty_hub_community_create_reply() below,
+			// which calls wp_insert_comment() directly and is unaffected by
+			// this setting.
+			'comment_status' => 'closed',
+		),
+		true
+	);
+	if ( is_wp_error( $post_id ) || ! $post_id ) {
+		return new WP_Error( 'insert_failed', __( 'Could not create the post.', 'fourliberty-hub' ), array( 'status' => 500 ) );
+	}
+
+	update_post_meta( $post_id, '_fl_user_id', $user_id );
+	update_post_meta( $post_id, '_fl_display_name', $display_name );
+	update_post_meta( $post_id, '_fl_role', $role );
+	update_post_meta( $post_id, '_fl_flags', 0 );
+
+	return new WP_REST_Response(
+		array(
+			'success' => true,
+			'postId'  => $post_id,
+			'status'  => $status,
+			'url'     => get_permalink( $post_id ),
+		),
+		201
+	);
+}
+
+function fourliberty_hub_community_create_reply( WP_REST_Request $request ) {
+	$body = $request->get_json_params();
+	if ( ! is_array( $body ) ) {
+		return new WP_Error( 'invalid_json', __( 'Invalid request body.', 'fourliberty-hub' ), array( 'status' => 400 ) );
+	}
+
+	$post_id      = isset( $body['postId'] ) ? absint( $body['postId'] ) : 0;
+	$user_id      = isset( $body['userId'] ) ? sanitize_text_field( (string) $body['userId'] ) : '';
+	$display_name = isset( $body['displayName'] ) ? sanitize_text_field( (string) $body['displayName'] ) : '';
+	$content      = isset( $body['body'] ) ? sanitize_textarea_field( (string) $body['body'] ) : '';
+	$role         = fourliberty_hub_community_sanitize_role( $body['role'] ?? null );
+	$status       = fourliberty_hub_community_sanitize_status( $body['status'] ?? null );
+
+	if ( '' === $user_id || strlen( $user_id ) > FOURLIBERTY_COMMUNITY_MAX_USER_ID ) {
+		return new WP_Error( 'invalid_user_id', __( 'Missing or invalid userId.', 'fourliberty-hub' ), array( 'status' => 400 ) );
+	}
+	if ( '' === $display_name || mb_strlen( $display_name ) > FOURLIBERTY_COMMUNITY_MAX_DISPLAY_NAME ) {
+		return new WP_Error( 'invalid_display_name', __( 'Missing or invalid displayName.', 'fourliberty-hub' ), array( 'status' => 400 ) );
+	}
+	if ( '' === $content || mb_strlen( $content ) > FOURLIBERTY_COMMUNITY_MAX_REPLY_BODY ) {
+		return new WP_Error( 'invalid_body', __( 'Missing or invalid body.', 'fourliberty-hub' ), array( 'status' => 400 ) );
+	}
+
+	// Must reference a REAL, non-trashed community post — never trust an
+	// arbitrary postId enough to attach a comment to someone else's content.
+	$post = get_post( $post_id );
+	if ( ! $post || FOURLIBERTY_COMMUNITY_POST_TYPE !== $post->post_type || ! in_array( $post->post_status, array( 'publish', 'pending' ), true ) ) {
+		return new WP_Error( 'invalid_post', __( 'That post does not exist.', 'fourliberty-hub' ), array( 'status' => 404 ) );
+	}
+
+	// wp_insert_comment() directly, NOT wp_new_comment() — the latter checks
+	// comments_open() (closed on every community post, on purpose) and
+	// fires the public comment-notification pipeline meant for ordinary
+	// blog comments, neither of which applies here.
+	$comment_id = wp_insert_comment(
+		array(
+			'comment_post_ID' => $post_id,
+			'comment_content' => $content,
+			'comment_author'  => $display_name,
+			'comment_type'    => 'comment',
+			'comment_approved' => ( 'pending' === $status ) ? 0 : 1,
+		)
+	);
+	if ( ! $comment_id ) {
+		return new WP_Error( 'insert_failed', __( 'Could not create the reply.', 'fourliberty-hub' ), array( 'status' => 500 ) );
+	}
+
+	update_comment_meta( $comment_id, '_fl_user_id', $user_id );
+	update_comment_meta( $comment_id, '_fl_display_name', $display_name );
+	update_comment_meta( $comment_id, '_fl_role', $role );
+
+	return new WP_REST_Response(
+		array(
+			'success'   => true,
+			'commentId' => $comment_id,
+			'status'    => $status,
+		),
+		201
+	);
+}
+
+function fourliberty_hub_register_community_rest_routes() {
+	register_rest_route(
+		'fourliberty/v1',
+		'/community-post',
+		array(
+			'methods'             => 'POST',
+			'permission_callback' => 'fourliberty_hub_verify_community_signature',
+			'callback'            => 'fourliberty_hub_community_create_post',
+		)
+	);
+	register_rest_route(
+		'fourliberty/v1',
+		'/community-reply',
+		array(
+			'methods'             => 'POST',
+			'permission_callback' => 'fourliberty_hub_verify_community_signature',
+			'callback'            => 'fourliberty_hub_community_create_reply',
+		)
+	);
+}
+add_action( 'rest_api_init', 'fourliberty_hub_register_community_rest_routes' );

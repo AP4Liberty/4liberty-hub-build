@@ -464,6 +464,48 @@ export async function verifySession( token: unknown ): Promise< VerifiedSession 
 }
 
 /**
+ * Syncs an already-loaded identity record's role to match the WordPress-
+ * configured moderator list (PHASE-8-BUILD-PLAN.md Task C) — mutates
+ * `user.role` in place and persists it ONLY if it changed, self-healing on
+ * every call rather than needing a one-time migration: if Austin adds or
+ * removes someone from the moderator list, the change takes effect the
+ * next time that person's session is verified, on the same ~1-minute
+ * cadence as every other WordPress-sourced setting. Takes the caller's
+ * already-fetched UserRecord rather than an email, to avoid a redundant
+ * Blobs read right after verifySession() already loaded it. Never demotes
+ * a stored 'admin' role (unused today, but reserved) — only toggles
+ * between 'member' and 'moderator'.
+ */
+export async function syncModeratorRole( user: UserRecord, isModerator: boolean ): Promise< UserRecord > {
+	if ( 'admin' === user.role ) {
+		return user;
+	}
+	const desiredRole = isModerator ? 'moderator' : 'member';
+	if ( user.role !== desiredRole ) {
+		user.role = desiredRole;
+		await saveUser( user );
+	}
+	return user;
+}
+
+/**
+ * Best-effort counter of top-level community posts (not replies — this is
+ * `postCount`, replies get their own field if that's ever needed). Called
+ * by community-post.mts right after WordPress confirms a post was created.
+ * Silently does nothing if the user has since vanished — the caller only
+ * reaches this after verifySession() already found them, so this
+ * shouldn't happen in practice.
+ */
+export async function incrementPostCount( email: string ): Promise< void > {
+	const user = await getUser( email );
+	if ( ! user ) {
+		return;
+	}
+	user.postCount += 1;
+	await saveUser( user );
+}
+
+/**
  * Records a successfully-saved Square card on the identity spine, called
  * once by tip-create.mts right after Square confirms the card was saved.
  * Marks the user a `supporter` — saving a card only happens after a real

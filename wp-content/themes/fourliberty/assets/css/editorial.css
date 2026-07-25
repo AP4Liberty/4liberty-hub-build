@@ -664,28 +664,40 @@ button.fl-mini-live {
 .fl-dark-channel__slide--image { background: #0f0d15; cursor: pointer; }
 .fl-dark-channel__slide--image img { width: 100%; height: 100%; object-fit: contain; display: block; }
 
-/* Blog post — a readable card. */
+/* Blog post — full-bleed like the video preview (2026-07-24: was a small
+   centered card leaving most of the stage empty; now matches video/image
+   treatment — background photo fills the slide, text overlays the bottom). */
 .fl-dark-channel__slide--post {
-	flex-direction: column;
-	gap: 12px;
-	text-align: center;
-	padding: 24px;
-	background: var(--wp--preset--color--surface);
+	background-size: cover;
+	background-position: center;
+	background-color: #171019;
+	cursor: pointer;
 }
-.fl-dark-channel__slide--post img {
-	width: 100%;
-	max-width: 260px;
-	aspect-ratio: 16/9;
-	object-fit: cover;
-	border-radius: 10px;
+.fl-dark-channel__slide--post::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(to top, rgba(9,7,12,.75) 12%, transparent 48%);
 }
 .fl-dark-channel__slide-heading {
+	position: absolute;
+	left: 20px;
+	right: 20px;
+	bottom: 44px;
+	z-index: 1;
 	font-family: var(--wp--preset--font-family--serif);
-	color: var(--wp--preset--color--headline);
-	font-size: clamp(1.1rem, 2.2vw, 1.4rem);
-	max-width: 420px;
+	font-weight: 700;
+	color: #fff;
+	font-size: clamp(1.1rem, 2.4vw, 1.7rem);
+	line-height: 1.12;
+	text-align: left;
+	text-wrap: balance;
 }
 .fl-dark-channel__slide-cta {
+	position: absolute;
+	left: 20px;
+	bottom: 18px;
+	z-index: 1;
 	font-family: var(--wp--preset--font-family--mono);
 	font-size: .7rem;
 	letter-spacing: .08em;

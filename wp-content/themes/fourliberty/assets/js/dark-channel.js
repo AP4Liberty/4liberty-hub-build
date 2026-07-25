@@ -243,17 +243,18 @@
 			img.alt = item.title || 'Advertisement';
 			slide.appendChild( img );
 		} else {
-			// Blog post — a readable card that opens the post.
+			// Blog post — full-bleed like the video/image slides (2026-07-24
+			// fix: this used to be a small centered card, floating in a lot of
+			// empty stage — Austin wanted it to fill the slide the same way).
 			slide = document.createElement( 'a' );
 			slide.className = 'fl-dark-channel__slide fl-dark-channel__slide--post';
 			slide.href = item.url || '#';
 			slide.target = '_blank';
 			slide.rel = 'noopener';
 			if ( item.thumbnail ) {
-				var pimg = document.createElement( 'img' );
-				pimg.src = item.thumbnail;
-				pimg.alt = '';
-				slide.appendChild( pimg );
+				slide.style.backgroundImage = 'url(' + item.thumbnail + ')';
+			} else {
+				slide.classList.add( 'fl-dark-channel__slide--no-thumb' );
 			}
 			var h3 = document.createElement( 'span' );
 			h3.className = 'fl-dark-channel__slide-heading';

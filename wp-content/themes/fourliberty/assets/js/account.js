@@ -31,7 +31,10 @@
 	var SESSION_STORAGE_KEY = 'fl-session';
 	var VERIFY_PARAM = 'fl_verify';
 
-	var els = null;
+	// Every container currently showing the login/logout control — was a
+	// single `els` slot until Task D's Community composer needed a SECOND
+	// place on the page to show the exact same control (see mount() below).
+	var mounts = [];
 	// Loaded immediately below (top-level, not inside init()) — this only
 	// touches localStorage, no DOM needed, so other scripts' own
 	// DOMContentLoaded handlers (chat.js) can rely on
@@ -111,6 +114,22 @@
 			session.token = newToken;
 			saveSession( session );
 		},
+		/**
+		 * Renders the current login/logout control into ANY container, kept
+		 * in sync automatically on every future login/logout/verify — added
+		 * for Task D's Community composer, which needs the exact same login
+		 * UI (link + 6-digit code, Decision 11a) in a second place on the
+		 * page, not just the homepage chat rail. Safe to call more than once
+		 * on the same container; each mounted container renders and updates
+		 * independently thereafter.
+		 */
+		mount: function ( container ) {
+			if ( ! container || mounts.indexOf( container ) !== -1 ) {
+				return;
+			}
+			mounts.push( container );
+			renderInto( container );
+		},
 	};
 
 	function clear( el ) {
@@ -119,19 +138,20 @@
 		}
 	}
 
-	function render() {
-		if ( ! els ) {
-			return;
-		}
-		clear( els.container );
+	function renderInto( container ) {
+		clear( container );
 		if ( session ) {
-			renderLoggedIn();
+			renderLoggedIn( container );
 		} else {
-			renderLoggedOut();
+			renderLoggedOut( container );
 		}
 	}
 
-	function renderLoggedIn() {
+	function render() {
+		mounts.forEach( renderInto );
+	}
+
+	function renderLoggedIn( container ) {
 		var row = document.createElement( 'div' );
 		row.className = 'fl-account';
 
@@ -149,10 +169,10 @@
 		row.appendChild( text );
 		row.appendChild( document.createTextNode( ' · ' ) );
 		row.appendChild( logoutBtn );
-		els.container.appendChild( row );
+		container.appendChild( row );
 	}
 
-	function renderLoggedOut() {
+	function renderLoggedOut( container ) {
 		var row = document.createElement( 'div' );
 		row.className = 'fl-account';
 
@@ -229,7 +249,7 @@
 		row.appendChild( emailForm );
 		row.appendChild( codeForm );
 		row.appendChild( status );
-		els.container.appendChild( row );
+		container.appendChild( row );
 	}
 
 	function requestLink( email, submitBtn, status, onSent ) {
@@ -325,11 +345,13 @@
 	}
 
 	function renderVerifying() {
-		clear( els.container );
-		var row = document.createElement( 'div' );
-		row.className = 'fl-account';
-		row.textContent = 'Logging you in…';
-		els.container.appendChild( row );
+		mounts.forEach( function ( container ) {
+			clear( container );
+			var row = document.createElement( 'div' );
+			row.className = 'fl-account';
+			row.textContent = 'Logging you in…';
+			container.appendChild( row );
+		} );
 	}
 
 	function verifyFromUrl( token ) {
@@ -377,26 +399,28 @@
 
 	function init() {
 		var rail = document.querySelector( '[data-fl="chat-rail"]' );
-		if ( ! rail ) {
-			return;
+		if ( rail ) {
+			var container = document.createElement( 'div' );
+			container.setAttribute( 'data-fl', 'account' );
+			var head = rail.querySelector( '.fl-rail__head' );
+			if ( head ) {
+				head.insertAdjacentElement( 'afterend', container );
+			} else {
+				rail.insertBefore( container, rail.firstChild );
+			}
+			window.FLHub.identity.mount( container );
 		}
 
-		var container = document.createElement( 'div' );
-		container.setAttribute( 'data-fl', 'account' );
-		var head = rail.querySelector( '.fl-rail__head' );
-		if ( head ) {
-			head.insertAdjacentElement( 'afterend', container );
-		} else {
-			rail.insertBefore( container, rail.firstChild );
-		}
-
-		els = { container: container };
-
+		// Runs on EVERY page, not just ones with a chat rail — completing a
+		// magic-link click must work regardless of whether THIS page happens
+		// to render the little login/logout row itself
+		// (PHASE-8-BUILD-PLAN.md Decision 9: returnPath exists specifically
+		// so a visitor can land back on a rail-less page like /community/
+		// after logging in — the old rail-only early return silently broke
+		// that for exactly the page it was built for).
 		var token = extractAndCleanVerifyToken();
 		if ( token ) {
 			verifyFromUrl( token );
-		} else {
-			render();
 		}
 	}
 

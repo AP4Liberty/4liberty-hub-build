@@ -11,14 +11,25 @@
  * one.
  *
  * Auth is a custom X-FL-Signature header — an HMAC-SHA256 of the raw
- * request body, keyed by FOURLIBERTY_COMMUNITY_SECRET — NOT a WordPress
- * Application Password. GoDaddy/Sucuri's edge has a confirmed habit of
- * stripping Authorization headers on this site; a custom header sidesteps
- * that fight entirely. The secret is a wp-config.php constant (never the
- * database) and a matching Netlify env var of the same name — Austin enters
- * both himself.
+ * request body, keyed by a shared secret — NOT a WordPress Application
+ * Password. GoDaddy/Sucuri's edge has a confirmed habit of stripping
+ * Authorization headers on this site; a custom header sidesteps that fight
+ * entirely.
  *
- * @package fourliberty-hub
+ * The secret itself: fourliberty_hub_community_secret() below checks a
+ * wp-config.php constant FIRST (the stronger option, survives a database
+ * compromise) and falls back to a WordPress option set from the Community
+ * admin screen (settings-community.php) — added after discovering, in a
+ * real session with Austin, that this specific GoDaddy account has no
+ * accessible file manager, only SFTP, which is a real technical barrier for
+ * a non-technical, disabled owner. Requiring a file edit for this one
+ * secret would have broken Golden Rule #3 (owner-adjustable from a plain
+ * admin screen, never code) for the one thing in this entire feature that
+ * needed it. The blast radius of this SPECIFIC secret leaking is small
+ * enough to accept that tradeoff — unlike IDENTITY_JWT_SECRET (which can
+ * forge ANY member's session), this one can only create posts/replies
+ * under an identity the caller already asserts, and anyone with database
+ * access to leak it already has far worse options available to them.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -33,6 +44,21 @@ const FOURLIBERTY_COMMUNITY_MAX_USER_ID      = 100;
 const FOURLIBERTY_COMMUNITY_ROLES            = array( 'member', 'moderator', 'admin' );
 
 /**
+ * The wp-config.php constant wins if it's ever set (stronger — survives a
+ * database compromise); otherwise falls back to the option
+ * settings-community.php's admin screen writes. Same "constant overrides a
+ * default" shape already used throughout this theme for endpoint URLs
+ * (e.g. fourliberty_auth_request_endpoint() in functions.php).
+ */
+function fourliberty_hub_community_secret() {
+	if ( defined( 'FOURLIBERTY_COMMUNITY_SECRET' ) && FOURLIBERTY_COMMUNITY_SECRET ) {
+		return FOURLIBERTY_COMMUNITY_SECRET;
+	}
+	$stored = get_option( 'fourliberty_community_secret' );
+	return is_string( $stored ) ? $stored : '';
+}
+
+/**
  * hash_equals() specifically, never ===  — a non-constant-time compare here
  * would reopen exactly the timing-attack class this whole HMAC scheme
  * exists to close. Reads the RAW body (get_body(), not get_json_params())
@@ -41,14 +67,15 @@ const FOURLIBERTY_COMMUNITY_ROLES            = array( 'member', 'moderator', 'ad
  * mismatch from key ordering or whitespace alone.
  */
 function fourliberty_hub_verify_community_signature( WP_REST_Request $request ) {
-	if ( ! defined( 'FOURLIBERTY_COMMUNITY_SECRET' ) || ! FOURLIBERTY_COMMUNITY_SECRET ) {
+	$secret = fourliberty_hub_community_secret();
+	if ( ! $secret ) {
 		return new WP_Error( 'community_not_configured', __( 'Community write access is not configured.', 'fourliberty-hub' ), array( 'status' => 503 ) );
 	}
 	$signature = $request->get_header( 'x-fl-signature' );
 	if ( ! $signature ) {
 		return new WP_Error( 'missing_signature', __( 'Missing signature.', 'fourliberty-hub' ), array( 'status' => 401 ) );
 	}
-	$expected = hash_hmac( 'sha256', $request->get_body(), FOURLIBERTY_COMMUNITY_SECRET );
+	$expected = hash_hmac( 'sha256', $request->get_body(), $secret );
 	if ( ! hash_equals( $expected, $signature ) ) {
 		return new WP_Error( 'bad_signature', __( 'Invalid signature.', 'fourliberty-hub' ), array( 'status' => 401 ) );
 	}
@@ -192,6 +219,41 @@ function fourliberty_hub_community_create_reply( WP_REST_Request $request ) {
 	);
 }
 
+/**
+ * The report-button backend (Task D) — same signature-gated trust model as
+ * the two routes above, just incrementing a flag count instead of creating
+ * content. No new validation surface: a real post/comment must already
+ * exist, and the count is a plain integer nobody but a moderator ever
+ * reads (the _fl_flags admin-list column added in Task B).
+ */
+function fourliberty_hub_community_report( WP_REST_Request $request ) {
+	$body = $request->get_json_params();
+	if ( ! is_array( $body ) ) {
+		return new WP_Error( 'invalid_json', __( 'Invalid request body.', 'fourliberty-hub' ), array( 'status' => 400 ) );
+	}
+
+	$target_type = ( isset( $body['targetType'] ) && 'comment' === $body['targetType'] ) ? 'comment' : 'post';
+	$target_id   = isset( $body['targetId'] ) ? absint( $body['targetId'] ) : 0;
+	if ( ! $target_id ) {
+		return new WP_Error( 'invalid_target', __( 'Missing or invalid targetId.', 'fourliberty-hub' ), array( 'status' => 400 ) );
+	}
+
+	if ( 'comment' === $target_type ) {
+		if ( ! get_comment( $target_id ) ) {
+			return new WP_Error( 'invalid_target', __( 'That reply does not exist.', 'fourliberty-hub' ), array( 'status' => 404 ) );
+		}
+		update_comment_meta( $target_id, '_fl_flags', (int) get_comment_meta( $target_id, '_fl_flags', true ) + 1 );
+	} else {
+		$post = get_post( $target_id );
+		if ( ! $post || FOURLIBERTY_COMMUNITY_POST_TYPE !== $post->post_type ) {
+			return new WP_Error( 'invalid_target', __( 'That post does not exist.', 'fourliberty-hub' ), array( 'status' => 404 ) );
+		}
+		update_post_meta( $target_id, '_fl_flags', (int) get_post_meta( $target_id, '_fl_flags', true ) + 1 );
+	}
+
+	return new WP_REST_Response( array( 'success' => true ), 200 );
+}
+
 function fourliberty_hub_register_community_rest_routes() {
 	register_rest_route(
 		'fourliberty/v1',
@@ -209,6 +271,15 @@ function fourliberty_hub_register_community_rest_routes() {
 			'methods'             => 'POST',
 			'permission_callback' => 'fourliberty_hub_verify_community_signature',
 			'callback'            => 'fourliberty_hub_community_create_reply',
+		)
+	);
+	register_rest_route(
+		'fourliberty/v1',
+		'/community-report',
+		array(
+			'methods'             => 'POST',
+			'permission_callback' => 'fourliberty_hub_verify_community_signature',
+			'callback'            => 'fourliberty_hub_community_report',
 		)
 	);
 }

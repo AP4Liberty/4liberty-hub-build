@@ -22,6 +22,16 @@
  * email addresses belong, even though the addresses themselves aren't
  * secrets that unlock anything.
  *
+ * The Netlify connection secret (fourliberty_community_secret option, read
+ * by community-rest-routes.php's fourliberty_hub_community_secret()) lives
+ * in ITS OWN option, deliberately separate from fourliberty_community_
+ * config — that array is partly exposed on the public /server-config route,
+ * and keeping the secret in a different option means a future careless
+ * edit there can't accidentally leak it. The field below is never
+ * pre-filled with the real value and an empty submit never overwrites it —
+ * standard "leave blank to keep the current value" handling, the same
+ * reason no plugin ever echoes a saved API key back into its own form.
+ *
  * @package fourliberty-hub
  */
 
@@ -108,6 +118,15 @@ function fourliberty_hub_community_maybe_save() {
 
 	$room_name = isset( $_POST['fourliberty_community_room_name'] ) ? sanitize_text_field( wp_unslash( $_POST['fourliberty_community_room_name'] ) ) : '';
 
+	// Own option, own rule: a BLANK submit never touches the stored secret
+	// — the field is never pre-filled with the real value (see this file's
+	// header), so "I didn't type anything here" must mean "leave it alone,"
+	// never "clear it."
+	$secret_input = isset( $_POST['fourliberty_community_secret'] ) ? trim( wp_unslash( $_POST['fourliberty_community_secret'] ) ) : '';
+	if ( '' !== $secret_input ) {
+		update_option( 'fourliberty_community_secret', $secret_input );
+	}
+
 	$config = array(
 		'paused'              => ! empty( $_POST['fourliberty_community_paused'] ),
 		'communityMode'       => ( isset( $_POST['fourliberty_community_mode'] ) && 'gated' === $_POST['fourliberty_community_mode'] )
@@ -128,7 +147,9 @@ function fourliberty_hub_community_maybe_save() {
 }
 
 function fourliberty_hub_render_community() {
-	$config = fourliberty_hub_community_config();
+	$config                = fourliberty_hub_community_config();
+	$secret_from_constant  = defined( 'FOURLIBERTY_COMMUNITY_SECRET' ) && FOURLIBERTY_COMMUNITY_SECRET;
+	$secret_from_option    = (bool) get_option( 'fourliberty_community_secret' );
 	?>
 	<div class="wrap">
 		<h1><?php esc_html_e( 'Community', 'fourliberty-hub' ); ?></h1>
@@ -210,6 +231,26 @@ function fourliberty_hub_render_community() {
 				<tr>
 					<th scope="row"><label for="fourliberty_community_room_name"><?php esc_html_e( 'Room name', 'fourliberty-hub' ); ?></label></th>
 					<td><input type="text" id="fourliberty_community_room_name" name="fourliberty_community_room_name" value="<?php echo esc_attr( $config['roomName'] ); ?>" class="regular-text" /></td>
+				</tr>
+			</table>
+
+			<h2 class="title"><?php esc_html_e( 'Netlify connection', 'fourliberty-hub' ); ?></h2>
+			<div style="background:#fff;border:1px solid #dcdcde;border-left:4px solid #c99a3f;padding:12px 16px;max-width:640px;margin-bottom:16px;border-radius:4px;">
+				<?php if ( $secret_from_constant ) : ?>
+					<p style="margin:0;color:#1a7a30;font-weight:600;">✅ <?php esc_html_e( 'Connected — a value saved in your site\'s code is being used. You don\'t need to fill in the box below.', 'fourliberty-hub' ); ?></p>
+				<?php elseif ( $secret_from_option ) : ?>
+					<p style="margin:0;color:#1a7a30;font-weight:600;">✅ <?php esc_html_e( 'Connected — a value is saved. Only paste a new one below if you need to change it.', 'fourliberty-hub' ); ?></p>
+				<?php else : ?>
+					<p style="margin:0;color:#b32d2e;font-weight:600;">⚠️ <?php esc_html_e( 'Not connected yet — paste the value below and save.', 'fourliberty-hub' ); ?></p>
+				<?php endif; ?>
+			</div>
+			<table class="form-table" role="presentation">
+				<tr>
+					<th scope="row"><label for="fourliberty_community_secret"><?php esc_html_e( 'Connection value', 'fourliberty-hub' ); ?></label></th>
+					<td>
+						<input type="password" id="fourliberty_community_secret" name="fourliberty_community_secret" value="" class="regular-text" autocomplete="off" />
+						<p class="description"><?php esc_html_e( 'This box is always empty for safety — it never shows what\'s already saved. Leaving it empty and saving will NOT erase a value that\'s already connected.', 'fourliberty-hub' ); ?></p>
+					</td>
 				</tr>
 			</table>
 

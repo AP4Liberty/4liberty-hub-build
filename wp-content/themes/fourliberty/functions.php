@@ -235,6 +235,34 @@ function fourliberty_assets() {
 		array( 'url' => fourliberty_auth_code_endpoint() )
 	);
 
+	// Community page composer/reply/report (Phase 8, Task D). No-ops
+	// immediately unless its own markup ([data-fl="community-composer-
+	// area"], [data-fl="community-reply-area"], or a [data-fl="community-
+	// report"] button) is on the page. Depends on fourliberty-account for
+	// window.FLHub.identity.mount()/getSession()/onChange().
+	wp_enqueue_script(
+		'fourliberty-community',
+		get_theme_file_uri( 'assets/js/community.js' ),
+		array( 'fourliberty-account' ),
+		filemtime( get_theme_file_path( 'assets/js/community.js' ) ),
+		true
+	);
+	wp_localize_script(
+		'fourliberty-community',
+		'fourlibertyCommunityPostEndpoint',
+		array( 'url' => fourliberty_community_post_endpoint() )
+	);
+	wp_localize_script(
+		'fourliberty-community',
+		'fourlibertyCommunityReplyEndpoint',
+		array( 'url' => fourliberty_community_reply_endpoint() )
+	);
+	wp_localize_script(
+		'fourliberty-community',
+		'fourlibertyCommunityReportEndpoint',
+		array( 'url' => fourliberty_community_report_endpoint() )
+	);
+
 	// "The Daily Brief" newsletter signup. No-ops immediately if
 	// [data-fl="newsletter-form"] isn't on the page. Independent of the
 	// chat/tips/account scripts — no shared state needed.
@@ -311,6 +339,27 @@ function fourliberty_tip_repeat_endpoint() {
 	return defined( 'FOURLIBERTY_TIP_REPEAT_ENDPOINT' )
 		? FOURLIBERTY_TIP_REPEAT_ENDPOINT
 		: 'https://4liberty-poller.netlify.app/api/tip-repeat';
+}
+
+/** The community-post Netlify function's public endpoint — same backend site. */
+function fourliberty_community_post_endpoint() {
+	return defined( 'FOURLIBERTY_COMMUNITY_POST_ENDPOINT' )
+		? FOURLIBERTY_COMMUNITY_POST_ENDPOINT
+		: 'https://4liberty-poller.netlify.app/api/community-post';
+}
+
+/** The community-reply Netlify function's public endpoint — same backend site. */
+function fourliberty_community_reply_endpoint() {
+	return defined( 'FOURLIBERTY_COMMUNITY_REPLY_ENDPOINT' )
+		? FOURLIBERTY_COMMUNITY_REPLY_ENDPOINT
+		: 'https://4liberty-poller.netlify.app/api/community-reply';
+}
+
+/** The community-report Netlify function's public endpoint — same backend site. */
+function fourliberty_community_report_endpoint() {
+	return defined( 'FOURLIBERTY_COMMUNITY_REPORT_ENDPOINT' )
+		? FOURLIBERTY_COMMUNITY_REPORT_ENDPOINT
+		: 'https://4liberty-poller.netlify.app/api/community-report';
 }
 
 /** The config-status Netlify function's public endpoint — same backend site. */

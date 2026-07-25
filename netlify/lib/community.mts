@@ -115,6 +115,12 @@ export async function createWordPressReply( args: {
 	return result.ok && result.body ? result.body : null;
 }
 
+/** The report-button backend (Task D) — a plain boolean, nothing to parse from the response body. */
+export async function createWordPressReport( targetType: 'post' | 'comment', targetId: number ): Promise< boolean > {
+	const result = await postToWordPress< { success: true } >( '/community-report', { targetType, targetId } );
+	return result.ok && !! result.body;
+}
+
 /**
  * Plain text only — no HTML, ever (PHASE-8-BUILD-PLAN.md: "strip on write
  * AND escape on render — both, not either"). This regex strip is a FIRST,

@@ -1387,7 +1387,13 @@ body.fl-chat-popup .fl-chat {
 	color: var(--wp--preset--color--headline);
 	text-decoration: none;
 }
-.fl-pagination { margin-top: 34px !important; gap: 14px; }
+/* display:flex added here (Task D) — archive.html's own .fl-pagination
+   gets its flex layout from the wp:query-pagination block's own
+   {"layout":{"type":"flex"}} attribute, but community-feed.php's
+   hand-rolled paginate_links() output has no such attribute to supply it,
+   so the class needs to be self-sufficient rather than relying on a block
+   attribute only one consumer provides. */
+.fl-pagination { margin-top: 34px !important; gap: 14px; display: flex; flex-wrap: wrap; justify-content: center; }
 .fl-pagination a, .fl-pagination span {
 	font-family: var(--wp--preset--font-family--mono);
 	font-size: .8rem;
@@ -1917,4 +1923,127 @@ a.fl-tier:hover { border-color: var(--wp--preset--color--gold-deep); }
 	margin-top: 6px;
 	font-size: .78rem;
 	color: var(--wp--preset--color--gold-deep);
+}
+
+/* ---------- Community page (Phase 8, Task D) ---------- */
+.fl-community-composer {
+	background: var(--wp--preset--color--surface);
+	border: 1px solid var(--wp--preset--color--line);
+	border-radius: 12px;
+	padding: 18px;
+	margin-bottom: 30px;
+}
+/* Same [hidden]-vs-form-display gotcha as .fl-account__form and
+   .fl-rumble-mirror__join — a form's own display default beats [hidden]
+   unless this is spelled out explicitly. */
+.fl-community-composer__form[hidden] { display: none; }
+.fl-community-composer__form input[type="text"],
+.fl-community-composer__form textarea {
+	width: 100%;
+	box-sizing: border-box;
+	background: var(--wp--preset--color--ink);
+	border: 1px solid var(--wp--preset--color--line-bright);
+	border-radius: 8px;
+	color: var(--wp--preset--color--headline);
+	padding: 10px 12px;
+	font-family: var(--wp--preset--font-family--sans);
+	font-size: .9rem;
+	margin-bottom: 10px;
+}
+.fl-community-composer__form textarea { min-height: 90px; resize: vertical; }
+.fl-community-composer__row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+.fl-community-composer__status { font-size: .78rem; color: var(--wp--preset--color--gold); flex: 1; min-height: 1.2em; }
+.fl-community-composer__status--error { color: var(--wp--preset--color--red-bright); }
+.fl-community-composer__submit {
+	background: var(--wp--preset--color--gold);
+	color: #1a130a;
+	font-weight: 700;
+	font-size: .86rem;
+	border: none;
+	border-radius: 8px;
+	padding: 9px 22px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+.fl-community-composer__submit:hover { background: #f0c96c; }
+.fl-community-composer__submit:disabled { opacity: .6; cursor: default; }
+
+.fl-community-feed { display: flex; flex-direction: column; gap: 16px; }
+.fl-community-post {
+	background: var(--wp--preset--color--surface);
+	border: 1px solid var(--wp--preset--color--line);
+	border-radius: 12px;
+	padding: 18px 20px;
+}
+.fl-community-post__title { margin: 0 0 6px; font-family: var(--wp--preset--font-family--serif); font-size: 1.15rem; line-height: 1.3; }
+.fl-community-post__title a { color: var(--wp--preset--color--headline); text-decoration: none; }
+.fl-community-post__title a:hover { color: var(--wp--preset--color--gold); }
+.fl-community-post__meta {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: .78rem;
+	color: var(--wp--preset--color--muted);
+	margin-bottom: 10px;
+}
+.fl-community-post__author { font-weight: 600; color: var(--wp--preset--color--body-text); }
+.fl-community-post__excerpt { font-size: .92rem; color: var(--wp--preset--color--body-text); margin: 0 0 10px; line-height: 1.5; }
+.fl-community-post__link { font-size: .84rem; font-weight: 700; color: var(--wp--preset--color--gold); text-decoration: none; }
+.fl-community-post__link:hover { text-decoration: underline; }
+
+.fl-community-post--single { padding: 24px; }
+.fl-community-post--single .fl-community-post__title { font-size: clamp(1.4rem, 3vw, 1.9rem); }
+.fl-community-post__body { font-size: 1rem; line-height: 1.65; color: var(--wp--preset--color--body-text); margin-bottom: 14px; }
+.fl-community-post__body p { margin: 0 0 1em; }
+
+.fl-badge {
+	display: inline-block;
+	font-size: .64rem;
+	font-weight: 800;
+	letter-spacing: .04em;
+	padding: 2px 7px;
+	border-radius: 999px;
+	text-transform: uppercase;
+}
+.fl-badge--mod { background: rgba(230, 186, 87, .16); color: var(--wp--preset--color--gold); }
+
+.fl-community-report {
+	background: none;
+	border: none;
+	color: var(--wp--preset--color--faint);
+	font-size: .74rem;
+	cursor: pointer;
+	padding: 0;
+}
+.fl-community-report:hover { color: var(--wp--preset--color--red-bright); }
+.fl-community-report:disabled { cursor: default; color: var(--wp--preset--color--muted); }
+
+.fl-community-replies { margin: 28px 0; }
+.fl-community-replies__title { font-size: 1rem; color: var(--wp--preset--color--headline); margin-bottom: 14px; }
+.fl-community-replies__empty { font-size: .88rem; color: var(--wp--preset--color--muted); }
+.fl-community-reply {
+	border-top: 1px solid var(--wp--preset--color--line);
+	padding: 14px 0;
+}
+.fl-community-reply__meta {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: .76rem;
+	color: var(--wp--preset--color--muted);
+	margin-bottom: 6px;
+}
+.fl-community-reply__author { font-weight: 600; color: var(--wp--preset--color--body-text); }
+.fl-community-reply__body { font-size: .92rem; color: var(--wp--preset--color--body-text); line-height: 1.55; margin: 0 0 6px; }
+
+@media (max-width: 600px) {
+	.fl-community-composer { padding: 14px; }
+	.fl-community-post { padding: 14px 16px; }
+	.fl-community-post--single { padding: 18px; }
 }

@@ -130,6 +130,13 @@
 	text-decoration: none;
 }
 .fl-nav-menu a:hover { color: var(--wp--preset--color--gold); }
+.fl-nav-menu a.fl-nav-shop {
+	color: var(--wp--preset--color--gold);
+	border: 1px solid var(--wp--preset--color--gold-deep);
+	border-radius: var(--fl-radius-pill);
+	padding: 6px 16px;
+}
+.fl-nav-menu a.fl-nav-shop:hover { background: rgba(230,186,87,.12); color: var(--wp--preset--color--gold); }
 .fl-nav-toggle {
 	display: none;
 	flex-direction: column;
@@ -1324,7 +1331,7 @@ body.fl-chat-popup .fl-chat {
    relative to some far-off ancestor instead — the likely cause of a "NEWS"
    tag once seen floating disconnected from its card. */
 .fl-thumb { display: block; position: relative; }
-.fl-lead .fl-thumb { aspect-ratio: 16 / 9; background: linear-gradient(135deg,#3b2140,#221433 60%,#141019); }
+.fl-lead .fl-thumb { aspect-ratio: 16 / 9; background: linear-gradient(135deg,#3b2140,#221433 60%,#141019); background-size: cover; background-position: center; }
 .fl-cat-tag {
 	position: absolute;
 	top: 13px;
@@ -1526,6 +1533,16 @@ body.fl-chat-popup .fl-chat {
 	margin-top: 4px;
 }
 .fl-newsletter__status--error { color: var(--wp--preset--color--red-bright); }
+@media (max-width: 600px) {
+	/* The input+button row never wrapped on its own — on narrow phones the
+	   "Join Free" button ran past the card edge and got visually sliced by
+	   the card's rounded corner. Stack them instead of squeezing both into
+	   one row. */
+	.fl-newsletter { padding: 22px 18px; }
+	.fl-newsletter-form { flex-direction: column; align-items: stretch; }
+	.fl-newsletter-form input { min-width: 0; }
+	.fl-newsletter-form button { width: 100%; }
+}
 
 /* ---------- Support band ---------- */
 .fl-support-band {
@@ -1822,7 +1839,13 @@ a.fl-tier:hover { border-color: var(--wp--preset--color--gold-deep); }
 @media (max-width: 560px) {
 	.fl-cardrow, .fl-vids { grid-template-columns: 1fr 1fr; }
 	.fl-story { grid-template-columns: 76px 1fr; }
-	.fl-wordmark__sub { display: none; }
+	/* "NETWORK" was fully hidden here to make room in the masthead row
+	   (see the search-icon comment below) — stack it under "4LIBERTY"
+	   instead of dropping it, which reclaims the same horizontal space
+	   without losing the wordmark. */
+	.fl-wordmark { flex-direction: column; align-items: flex-start; gap: 1px; }
+	.fl-wordmark__sub { margin-top: 0; font-size: .5rem; letter-spacing: .22em; }
+	.fl-wordmark__sub::before, .fl-wordmark__sub::after { display: none; }
 }
 /* Static-nav hamburger (2026-07-23) — replaces the wp:navigation block's
    built-in overlayMenu. Below this width the inline links collapse into a

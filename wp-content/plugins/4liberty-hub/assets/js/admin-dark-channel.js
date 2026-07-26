@@ -202,6 +202,99 @@
 		} );
 	}
 
+	/* ---------- Rumble resolve (2026-07-26) — confirm the REAL embed id
+	   server-side instead of guessing one from whatever URL shape got pasted.
+	   Rumble's page-URL slug and its actual /embed/ id are not always the
+	   same string (the Culturama dead-link bug, 2026-07-24) — a bad guess
+	   here doesn't fail loudly until Rumble's own player shows "Video not
+	   found" to real visitors later. See fourliberty_hub_ajax_resolve_rumble()
+	   in settings-dark-channel.php for why this has to be a server-side
+	   proxy (Rumble's oEmbed response has no CORS header at all). ---------- */
+
+	/**
+	 * Pulls a usable Rumble URL out of whatever Austin pasted: a full page
+	 * URL (from the address bar), an /embed/ URL, a bare video id with no
+	 * domain, or a whole <iframe> embed-code snippet copied straight out of
+	 * Rumble's Embed dialog.
+	 */
+	function normalizeRumbleInput( raw ) {
+		var value = ( raw || '' ).trim();
+		if ( ! value ) {
+			return '';
+		}
+		var iframeMatch = value.match( /<iframe[^>]*\ssrc=["']([^"']+)["']/i );
+		if ( iframeMatch ) {
+			return iframeMatch[ 1 ];
+		}
+		if ( value.indexOf( 'rumble.com' ) !== -1 ) {
+			return /^https?:\/\//i.test( value ) ? value : 'https://' + value.replace( /^\/+/, '' );
+		}
+		// Bare id, no domain at all — try it as an embed URL so Rumble can
+		// still confirm whether it's real.
+		var idOnly = value.replace( /[^A-Za-z0-9]/g, '' );
+		return idOnly ? 'https://rumble.com/embed/' + idOnly + '/' : '';
+	}
+
+	function resolveRumbleLink( rawValue, row ) {
+		var hintEl = row.querySelector( '.fl-hub-rumble-hint' );
+		var settings = window.fourliberty_hub_dark_channel;
+		var lookupUrl = normalizeRumbleInput( rawValue );
+		if ( ! lookupUrl || ! settings || ! settings.resolveNonce || ! window.ajaxurl ) {
+			return;
+		}
+		if ( hintEl ) {
+			hintEl.style.color = '#646970';
+			hintEl.textContent = 'Checking with Rumble…';
+		}
+		var body = new URLSearchParams();
+		body.set( 'action', 'fourliberty_hub_resolve_rumble' );
+		body.set( 'nonce', settings.resolveNonce );
+		body.set( 'url', lookupUrl );
+
+		fetch( window.ajaxurl, { method: 'POST', credentials: 'same-origin', body: body } )
+			.then( function ( res ) {
+				return res.json();
+			} )
+			.then( function ( json ) {
+				if ( ! row.isConnected ) {
+					return; // row was removed while the request was in flight
+				}
+				if ( ! json || ! json.success || ! json.data || ! json.data.id ) {
+					if ( hintEl ) {
+						hintEl.style.color = '#b32d2e';
+						hintEl.textContent = ( json && json.data && json.data.message ) || "Rumble couldn't confirm that link.";
+					}
+					return;
+				}
+				var data = json.data;
+				var idInput = row.querySelector( '.fl-hub-field-video input[name*="[source_id]"]' );
+				if ( idInput && idInput.value !== data.id ) {
+					idInput.value = data.id; // the confirmed real embed id, which can differ from what was pasted/guessed
+				}
+				if ( data.duration && durationIsUnset( row ) ) {
+					setDurationSeconds( row, data.duration );
+				}
+				var thumbInput = row.querySelector( '.fl-hub-thumb-url' );
+				var thumbPreview = row.querySelector( '.fl-hub-thumb-preview' );
+				if ( data.thumbnail_url && thumbInput && ! thumbInput.value ) {
+					thumbInput.value = data.thumbnail_url;
+					if ( thumbPreview ) {
+						thumbPreview.style.backgroundImage = 'url(' + data.thumbnail_url + ')';
+					}
+				}
+				if ( hintEl ) {
+					hintEl.style.color = '#2a7a2a';
+					hintEl.textContent = '✓ Confirmed with Rumble' + ( data.title ? ': ' + data.title : '' );
+				}
+			} )
+			.catch( function () {
+				if ( hintEl && row.isConnected ) {
+					hintEl.style.color = '#b32d2e';
+					hintEl.textContent = "Couldn't reach Rumble to check that link — the ID above may still be wrong.";
+				}
+			} );
+	}
+
 	function wireDragReorder( container ) {
 		var dragging = null;
 
@@ -321,6 +414,54 @@
 				}
 			} );
 			frame.open();
+			return;
+		}
+
+		// Video-thumbnail picker (2026-07-26) — same WP media-library flow as
+		// the ad-image picker above, offered for YouTube/Rumble items since
+		// Rumble has no automatic thumbnail source at all (unlike YouTube's
+		// img.youtube.com convention — see dark-channel.js resolveThumbnail())
+		// and Austin was stuck hand-hosting a URL somewhere else first. Fills
+		// the same visible URL field the YouTube auto-fill/manual-paste path
+		// already uses, rather than a separate hidden field, so all three
+		// ways of setting a thumbnail stay in sync through one input.
+		var chooseThumbBtn = e.target.closest( '.fl-hub-choose-thumb' );
+		if ( chooseThumbBtn ) {
+			e.preventDefault();
+			var thumbRow = chooseThumbBtn.closest( '.fl-hub-row' );
+			if ( ! thumbRow || ! window.wp || ! wp.media ) {
+				return;
+			}
+			var thumbFrame = wp.media( {
+				title: 'Choose a thumbnail image',
+				button: { text: 'Use this image' },
+				multiple: false,
+			} );
+			thumbFrame.on( 'select', function () {
+				var thumbAttachment = thumbFrame.state().get( 'selection' ).first().toJSON();
+				var thumbUrl = ( thumbAttachment.sizes && thumbAttachment.sizes.large ) ? thumbAttachment.sizes.large.url : thumbAttachment.url;
+				var thumbInput = thumbRow.querySelector( '.fl-hub-thumb-url' );
+				var thumbPreview = thumbRow.querySelector( '.fl-hub-thumb-preview' );
+				if ( thumbInput ) {
+					thumbInput.value = thumbUrl;
+				}
+				if ( thumbPreview ) {
+					thumbPreview.style.backgroundImage = 'url(' + thumbUrl + ')';
+				}
+			} );
+			thumbFrame.open();
+		}
+	} );
+
+	// Typing/pasting a thumbnail URL by hand keeps the preview swatch in sync
+	// too, not just the Media Library picker above.
+	document.addEventListener( 'input', function ( e ) {
+		if ( e.target.classList.contains( 'fl-hub-thumb-url' ) ) {
+			var row = e.target.closest( '.fl-hub-row' );
+			var preview = row && row.querySelector( '.fl-hub-thumb-preview' );
+			if ( preview ) {
+				preview.style.backgroundImage = e.target.value ? 'url(' + e.target.value + ')' : '';
+			}
 		}
 	} );
 
@@ -391,12 +532,21 @@
 				return;
 			}
 			var rowType = videoRow.getAttribute( 'data-type' );
-			var cleaned = extractVideoId( e.target.value, rowType );
+			var rawPasted = e.target.value;
+			var cleaned = extractVideoId( rawPasted, rowType );
 			if ( cleaned !== e.target.value ) {
 				e.target.value = cleaned; // pasted a full URL — show the id we actually kept
 			}
 			if ( cleaned && rowType === 'youtube' ) {
 				detectYouTubeDuration( cleaned, videoRow, videoRow.querySelector( '.fl-hub-duration__hint' ) );
+			}
+			if ( cleaned && rowType === 'rumble' ) {
+				// Confirm against Rumble itself rather than trusting the local
+				// guess above — pass the ORIGINAL pasted text (full URL/embed
+				// code), not the already-locally-extracted id, since that
+				// local guess is exactly what can be wrong (see
+				// resolveRumbleLink()'s comment block).
+				resolveRumbleLink( rawPasted, videoRow );
 			}
 			return;
 		}

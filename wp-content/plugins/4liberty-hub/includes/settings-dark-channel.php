@@ -46,9 +46,75 @@ function fourliberty_hub_register_dark_channel_menu() {
 		$src  = FOURLIBERTY_HUB_URL . 'assets/js/admin-dark-channel.js';
 		$path = FOURLIBERTY_HUB_PATH . 'assets/js/admin-dark-channel.js';
 		wp_enqueue_script( 'fourliberty-hub-admin-dark-channel', $src, array(), file_exists( $path ) ? filemtime( $path ) : FOURLIBERTY_HUB_VERSION, true );
+		wp_localize_script( 'fourliberty-hub-admin-dark-channel', 'fourliberty_hub_dark_channel', array(
+			'resolveNonce' => wp_create_nonce( 'fourliberty_hub_resolve_rumble' ),
+		) );
 	} );
 }
 add_action( 'admin_menu', 'fourliberty_hub_register_dark_channel_menu' );
+
+add_action( 'wp_ajax_fourliberty_hub_resolve_rumble', 'fourliberty_hub_ajax_resolve_rumble' );
+
+/**
+ * Resolves a pasted Rumble link to its REAL /embed/ id via Rumble's own
+ * oEmbed API, server-side. Has to be a PHP proxy, not a direct fetch() from
+ * the admin screen's JS — confirmed 2026-07-26 that Rumble's oEmbed response
+ * carries no Access-Control-Allow-Origin header at all, so a browser blocks
+ * that call outright.
+ *
+ * Exists because Rumble's page-URL slug and its actual /embed/ id are NOT
+ * always the same string — the exact bug behind the Culturama dead-link
+ * incident (2026-07-24, see 4liberty-hub-project memory): the page slug
+ * `v7cqq4c` looked like a normal, valid id and even worked as a page URL,
+ * but 404'd at /embed/; only the real id from Rumble's own Embed panel
+ * (`v7ak244`) actually played. A client-side regex pulling an id-looking
+ * substring out of whatever shape URL got pasted can never catch that kind
+ * of mismatch on its own — only asking Rumble is reliable. Bonus: the same
+ * oEmbed response also carries the real duration and a real thumbnail_url,
+ * so a resolved item can auto-fill both instead of asking Austin to type or
+ * separately hunt one down.
+ */
+function fourliberty_hub_ajax_resolve_rumble() {
+	check_ajax_referer( 'fourliberty_hub_resolve_rumble', 'nonce' );
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_send_json_error( array( 'message' => __( 'You do not have permission to do that.', 'fourliberty-hub' ) ), 403 );
+	}
+
+	$url = isset( $_POST['url'] ) ? esc_url_raw( wp_unslash( $_POST['url'] ) ) : '';
+	if ( ! $url || false === strpos( $url, 'rumble.com' ) ) {
+		wp_send_json_error( array( 'message' => __( "That doesn't look like a Rumble link.", 'fourliberty-hub' ) ) );
+	}
+
+	$response = wp_remote_get(
+		'https://rumble.com/api/Media/oembed.json?url=' . rawurlencode( $url ),
+		array( 'timeout' => 8 )
+	);
+
+	if ( is_wp_error( $response ) ) {
+		wp_send_json_error( array( 'message' => $response->get_error_message() ) );
+	}
+
+	$code = wp_remote_retrieve_response_code( $response );
+	$body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+	// A dead/wrong link gets a plain-text "Media not found with that url"
+	// back (not JSON) — exactly the case this exists to catch BEFORE it gets
+	// saved and shows "Video not found" to real site visitors instead.
+	if ( 200 !== $code || ! is_array( $body ) || empty( $body['html'] ) ) {
+		wp_send_json_error( array( 'message' => __( "Rumble couldn't find a video at that link — double check the URL and try again.", 'fourliberty-hub' ) ) );
+	}
+
+	if ( ! preg_match( '#/embed/([a-z0-9]+)/#i', $body['html'], $matches ) ) {
+		wp_send_json_error( array( 'message' => __( "Rumble found the video but the embed ID couldn't be read from its response.", 'fourliberty-hub' ) ) );
+	}
+
+	wp_send_json_success( array(
+		'id'            => $matches[1],
+		'title'         => isset( $body['title'] ) ? sanitize_text_field( $body['title'] ) : '',
+		'duration'      => isset( $body['duration'] ) ? absint( $body['duration'] ) : 0,
+		'thumbnail_url' => isset( $body['thumbnail_url'] ) ? esc_url_raw( $body['thumbnail_url'] ) : '',
+	) );
+}
 
 function fourliberty_hub_dark_channel_config() {
 	if ( function_exists( 'fourliberty_dark_channel_config' ) ) {
@@ -363,6 +429,12 @@ function fourliberty_hub_render_playlist_row( $item, $recent_posts, $index ) {
 						   `required` was redundant risk for no benefit — removed rather than
 						   chase which hidden-field combination triggers the browser bug. */ ?>
 						<input type="text" name="fourliberty_playlist[<?php echo esc_attr( $index ); ?>][source_id]" value="<?php echo esc_attr( $is_video ? $source_id : '' ); ?>" placeholder="<?php esc_attr_e( 'Paste a YouTube/Rumble link, or just the video ID', 'fourliberty-hub' ); ?>" />
+						<?php /* Rumble-only (2026-07-26): confirms the pasted link against
+						   Rumble's own API and swaps in the REAL embed id, since Rumble's
+						   page-URL slug and its actual embed id aren't always the same
+						   string — see fourliberty_hub_ajax_resolve_rumble(). Populated by
+						   admin-dark-channel.js's resolveRumbleLink(). */ ?>
+						<span class="fl-hub-rumble-hint" style="display:block;margin-top:3px;"></span>
 					</label>
 					<label class="fl-hub-field-post" style="font-size:12px;<?php echo 'post' !== $type ? 'display:none;' : ''; ?>">
 						<?php esc_html_e( 'Blog post', 'fourliberty-hub' ); ?>
@@ -412,8 +484,12 @@ function fourliberty_hub_render_playlist_row( $item, $recent_posts, $index ) {
 						<input type="text" class="regular-text" style="width:100%;" name="fourliberty_playlist[<?php echo esc_attr( $index ); ?>][title]" value="<?php echo esc_attr( $title ); ?>" />
 					</label>
 					<label class="fl-hub-field-video" style="font-size:12px;<?php echo $is_video ? '' : 'display:none;'; ?>">
-						<?php esc_html_e( 'Thumbnail URL (YouTube fills this in automatically — for Rumble, paste one yourself or the slide shows a plain background)', 'fourliberty-hub' ); ?>
-						<input type="url" class="regular-text" style="width:100%;" name="fourliberty_playlist[<?php echo esc_attr( $index ); ?>][thumbnail]" value="<?php echo esc_attr( $is_video ? $thumbnail : '' ); ?>" />
+						<?php esc_html_e( 'Thumbnail (YouTube fills this in automatically — for Rumble, choose an image from your Media Library, or paste a URL)', 'fourliberty-hub' ); ?>
+						<span style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:2px;">
+							<span class="fl-hub-thumb-preview" style="width:64px;height:36px;flex:none;border-radius:4px;border:1px solid #dcdcde;background:#f0f0f1 center/cover no-repeat;<?php echo ( $is_video && $thumbnail ) ? 'background-image:url(' . esc_url( $thumbnail ) . ');' : ''; ?>"></span>
+							<input type="url" class="fl-hub-thumb-url" style="flex:1;min-width:140px;" name="fourliberty_playlist[<?php echo esc_attr( $index ); ?>][thumbnail]" value="<?php echo esc_attr( $is_video ? $thumbnail : '' ); ?>" placeholder="https://…" />
+							<button type="button" class="button fl-hub-choose-thumb" style="flex:none;"><?php esc_html_e( 'Media Library', 'fourliberty-hub' ); ?></button>
+						</span>
 					</label>
 				</div>
 			</div>

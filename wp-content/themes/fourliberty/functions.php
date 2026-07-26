@@ -769,3 +769,63 @@ add_filter(
 		return isset( $_GET['fl_chat_popup'] ) ? __( 'Live Chat — 4Liberty Network', 'fourliberty' ) : $title;
 	}
 );
+
+/**
+ * Swap WordPress's comments for Discourse's on articles that have actually
+ * been published to the forum (Phase 9).
+ *
+ * WHY A FILTER AND NOT A TEMPLATE EDIT: the WP Discourse plugin replaces
+ * comments by hooking `comments_template`, which CLASSIC themes call and
+ * BLOCK themes never do — so with this theme its comment setting silently
+ * does nothing (confirmed live 2026-07-27: the plugin's assets loaded but
+ * no Discourse comment markup rendered). The plugin ships a
+ * `wp-discourse/comments` block for exactly this case, but dropping it into
+ * templates/single.html unconditionally would strip the normal comment
+ * section off every OLD post that was never published to the forum,
+ * including the real comments already on them.
+ *
+ * WHY NOT A PHP PATTERN: patterns in /patterns/ are read and their PHP
+ * evaluated when patterns are REGISTERED (on `init`), before the main loop
+ * sets up the post — so get_the_ID() there is not reliable. `render_block`
+ * runs during actual output, where it is.
+ *
+ * `discourse_permalink` is the meta the plugin writes only on a successful
+ * publish (verified against a real published post), so it is the honest
+ * signal for "this article has a forum thread." Anything without it keeps
+ * WordPress's own comments, untouched.
+ *
+ * Fails SAFE in every direction: not a post, no id, no meta, block not
+ * registered, or the block rendering empty (e.g. the plugin is deactivated)
+ * all fall through to the original WordPress comments markup.
+ */
+function fourliberty_swap_in_discourse_comments( $block_content, $block ) {
+	if ( ! isset( $block['blockName'] ) || 'core/comments' !== $block['blockName'] ) {
+		return $block_content;
+	}
+	if ( is_admin() || ! is_singular( 'post' ) ) {
+		return $block_content;
+	}
+
+	$post_id = get_the_ID();
+	if ( ! $post_id ) {
+		return $block_content;
+	}
+
+	$permalink = get_post_meta( $post_id, 'discourse_permalink', true );
+	if ( empty( $permalink ) ) {
+		return $block_content;
+	}
+
+	if ( ! class_exists( 'WP_Block_Type_Registry' )
+		|| ! WP_Block_Type_Registry::get_instance()->is_registered( 'wp-discourse/comments' ) ) {
+		return $block_content;
+	}
+
+	$rendered = do_blocks( '<!-- wp:wp-discourse/comments /-->' );
+
+	// An empty/whitespace-only render means the block produced nothing useful
+	// — keep the WordPress comments rather than leaving a bare heading and no
+	// way for anyone to reply.
+	return ( '' !== trim( wp_strip_all_tags( $rendered ) ) ) ? $rendered : $block_content;
+}
+add_filter( 'render_block', 'fourliberty_swap_in_discourse_comments', 10, 2 );

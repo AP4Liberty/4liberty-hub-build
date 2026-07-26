@@ -33,10 +33,13 @@ if ( ! ( $fl_post instanceof WP_Post ) ) {
 	return;
 }
 
-$fl_post_id = $fl_post->ID;
-$fl_name    = get_post_meta( $fl_post_id, '_fl_display_name', true );
-$fl_name    = $fl_name ? $fl_name : 'A member';
-$fl_role    = get_post_meta( $fl_post_id, '_fl_role', true );
+$fl_post_id     = $fl_post->ID;
+$fl_name        = get_post_meta( $fl_post_id, '_fl_display_name', true );
+$fl_name        = $fl_name ? $fl_name : 'A member';
+$fl_role        = get_post_meta( $fl_post_id, '_fl_role', true );
+$fl_gif         = fourliberty_community_safe_gif_url( get_post_meta( $fl_post_id, '_fl_gif_url', true ) );
+$fl_topic_terms = get_the_terms( $fl_post, 'fl_community_topic' );
+$fl_topic_term  = ( is_array( $fl_topic_terms ) && ! empty( $fl_topic_terms ) ) ? $fl_topic_terms[0] : null;
 
 $fl_replies = get_comments(
 	array(
@@ -56,9 +59,13 @@ $fl_reply_count = count( $fl_replies );
 		<div class="fl-community-post__meta">
 			<span class="fl-community-post__author"><?php echo esc_html( $fl_name ); ?></span>
 			<?php if ( 'moderator' === $fl_role ) : ?><span class="fl-badge fl-badge--mod">MOD</span><?php endif; ?>
+			<?php if ( $fl_topic_term ) : ?><span class="fl-community-post__topic"><?php echo esc_html( $fl_topic_term->name ); ?></span><?php endif; ?>
 			<span class="fl-community-post__date"><?php echo esc_html( get_the_date( 'M j, Y', $fl_post ) ); ?></span>
 		</div>
 		<div class="fl-community-post__body"><?php echo wpautop( esc_html( $fl_post->post_content ) ); // phpcs:ignore -- wpautop() only adds structural p/br tags around content already HTML-escaped above. ?></div>
+		<?php if ( $fl_gif ) : ?>
+		<div class="fl-community-gif"><img src="<?php echo esc_url( $fl_gif ); ?>" alt="" loading="lazy" /></div>
+		<?php endif; ?>
 		<button type="button" class="fl-community-report" data-fl="community-report" data-fl-target-type="post" data-fl-target-id="<?php echo esc_attr( $fl_post_id ); ?>">Report</button>
 	</article>
 	<!-- /wp:html -->
@@ -69,6 +76,7 @@ $fl_reply_count = count( $fl_replies );
 		<?php if ( $fl_replies ) : ?>
 			<?php foreach ( $fl_replies as $fl_comment ) :
 				$fl_reply_role = get_comment_meta( $fl_comment->comment_ID, '_fl_role', true );
+				$fl_reply_gif  = fourliberty_community_safe_gif_url( get_comment_meta( $fl_comment->comment_ID, '_fl_gif_url', true ) );
 				?>
 			<div class="fl-community-reply">
 				<div class="fl-community-reply__meta">
@@ -77,6 +85,9 @@ $fl_reply_count = count( $fl_replies );
 					<span class="fl-community-reply__date"><?php echo esc_html( mysql2date( 'M j', $fl_comment->comment_date ) ); ?></span>
 				</div>
 				<p class="fl-community-reply__body"><?php echo nl2br( esc_html( $fl_comment->comment_content ) ); // phpcs:ignore -- nl2br() only adds <br> tags around content already HTML-escaped above. ?></p>
+				<?php if ( $fl_reply_gif ) : ?>
+				<div class="fl-community-gif"><img src="<?php echo esc_url( $fl_reply_gif ); ?>" alt="" loading="lazy" /></div>
+				<?php endif; ?>
 				<button type="button" class="fl-community-report" data-fl="community-report" data-fl-target-type="comment" data-fl-target-id="<?php echo esc_attr( $fl_comment->comment_ID ); ?>">Report</button>
 			</div>
 			<?php endforeach; ?>
@@ -91,6 +102,9 @@ $fl_reply_count = count( $fl_replies );
 		<div data-fl="community-login-prompt"></div>
 		<form class="fl-community-composer__form" data-fl="community-reply-form" hidden>
 			<textarea name="body" rows="3" placeholder="Write a reply&#8230;" maxlength="5000" required></textarea>
+			<div class="fl-community-composer__extras">
+				<input type="url" name="gifUrl" class="fl-community-composer__gif" placeholder="Paste a Giphy or Tenor link (optional)" />
+			</div>
 			<div class="fl-community-composer__row">
 				<span class="fl-community-composer__status" data-fl="community-reply-status"></span>
 				<button type="submit" class="fl-community-composer__submit">Reply</button>

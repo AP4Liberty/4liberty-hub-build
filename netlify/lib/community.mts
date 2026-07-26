@@ -92,6 +92,8 @@ export async function createWordPressPost( args: {
 	title: string;
 	body: string;
 	status: 'publish' | 'pending';
+	topic?: string;
+	gifUrl?: string;
 } ): Promise< CreatePostResult | null > {
 	const result = await postToWordPress< CreatePostResult >( '/community-post', args );
 	return result.ok && result.body ? result.body : null;
@@ -101,6 +103,14 @@ export interface CreateReplyResult {
 	success: true;
 	commentId: number;
 	status: 'publish' | 'pending';
+	// The three fields below ride along so community-reply.mts can fire a
+	// best-effort "someone replied to your post" notification — see that
+	// file and identity.mts's getUserByUserId() for how postAuthorUserId
+	// (WordPress's opaque _fl_user_id, never an email) resolves to an
+	// address to notify.
+	postAuthorUserId: string;
+	postTitle: string;
+	postUrl: string;
 }
 
 export async function createWordPressReply( args: {
@@ -110,9 +120,53 @@ export async function createWordPressReply( args: {
 	role: string;
 	body: string;
 	status: 'publish' | 'pending';
+	gifUrl?: string;
 } ): Promise< CreateReplyResult | null > {
 	const result = await postToWordPress< CreateReplyResult >( '/community-reply', args );
 	return result.ok && result.body ? result.body : null;
+}
+
+/**
+ * GIF host allowlist (Phase 8, Task E) — mirrors
+ * community-post-type.php's fourliberty_hub_validate_gif_url() exactly
+ * (PHASE-8-TASK-E-PLAN.md Decision 2: validated on Netlify AND again in
+ * PHP, both not either). A GIF is stored as its OWN field, never inside the
+ * plain-text body — this does not loosen sanitizePostBody/sanitizeReplyBody
+ * anywhere below.
+ *
+ * Exact hostname match via a Set, never a substring/`.includes()` check on
+ * the raw URL — that specific mistake is what would let
+ * `media.giphy.com.evil.tld` slip through.
+ */
+const GIF_ALLOWED_HOSTS = new Set( [ 'media.giphy.com', 'i.giphy.com', 'media.tenor.com', 'c.tenor.com' ] );
+const GIF_ALLOWED_EXTENSIONS = new Set( [ 'gif', 'webp', 'mp4' ] );
+
+/**
+ * Returns the URL (as `URL` re-serializes it) if it's `https:`, on the host
+ * allowlist, and ends in an allowed extension — otherwise `null`. Never
+ * throws; a bad/missing URL just means "no GIF on this post."
+ */
+export function validateGifUrl( raw: unknown ): string | null {
+	if ( typeof raw !== 'string' || raw.trim().length === 0 ) {
+		return null;
+	}
+	let url: URL;
+	try {
+		url = new URL( raw.trim() );
+	} catch {
+		return null;
+	}
+	if ( url.protocol !== 'https:' ) {
+		return null;
+	}
+	if ( ! GIF_ALLOWED_HOSTS.has( url.hostname.toLowerCase() ) ) {
+		return null;
+	}
+	const ext = url.pathname.slice( url.pathname.lastIndexOf( '.' ) + 1 ).toLowerCase();
+	if ( ! GIF_ALLOWED_EXTENSIONS.has( ext ) ) {
+		return null;
+	}
+	return url.toString();
 }
 
 /** The report-button backend (Task D) — a plain boolean, nothing to parse from the response body. */

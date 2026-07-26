@@ -764,6 +764,15 @@ button.fl-mini-live {
 	cursor: pointer;
 }
 .fl-account__status { width: 100%; font-size: .72rem; }
+.fl-account__notify {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font-size: .74rem;
+	color: var(--wp--preset--color--muted);
+	cursor: pointer;
+}
+.fl-account__notify input[type="checkbox"] { margin: 0; }
 
 /* ---------- Chat + tip rail ---------- */
 .fl-rail {
@@ -2042,8 +2051,88 @@ a.fl-tier:hover { border-color: var(--wp--preset--color--gold-deep); }
 .fl-community-reply__author { font-weight: 600; color: var(--wp--preset--color--body-text); }
 .fl-community-reply__body { font-size: .92rem; color: var(--wp--preset--color--body-text); line-height: 1.55; margin: 0 0 6px; }
 
+/* ---------- Community page: categories + GIFs (Phase 8, Task E) ---------- */
+.fl-community-composer__extras {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 0 0 10px;
+}
+.fl-community-composer__topic,
+.fl-community-composer__gif {
+	background: var(--wp--preset--color--ink);
+	border: 1px solid var(--wp--preset--color--line-bright);
+	border-radius: 8px;
+	color: var(--wp--preset--color--headline);
+	padding: 8px 10px;
+	font-family: var(--wp--preset--font-family--sans);
+	font-size: .82rem;
+}
+.fl-community-composer__gif { flex: 1; min-width: 200px; }
+
+.fl-community-topic-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 0 0 20px;
+}
+.fl-community-topic-chip {
+	font-size: .8rem;
+	font-weight: 600;
+	padding: 6px 13px;
+	border-radius: 999px;
+	border: 1px solid var(--wp--preset--color--line-bright);
+	color: var(--wp--preset--color--body-text);
+	text-decoration: none;
+	white-space: nowrap;
+}
+.fl-community-topic-chip:hover { border-color: var(--wp--preset--color--gold); color: var(--wp--preset--color--gold); }
+.fl-community-topic-chip.is-active { background: var(--wp--preset--color--gold); color: #1a130a; border-color: var(--wp--preset--color--gold); }
+
+.fl-community-post__topic {
+	font-size: .68rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .03em;
+	color: var(--wp--preset--color--faint);
+}
+
+.fl-community-gif {
+	margin: 2px 0 12px;
+	border-radius: 8px;
+	overflow: hidden;
+	max-width: 320px;
+	background: var(--wp--preset--color--ink);
+}
+.fl-community-gif img { display: block; width: 100%; height: auto; }
+
+.fl-community-discord {
+	background: var(--wp--preset--color--surface);
+	border: 1px solid var(--wp--preset--color--line);
+	border-radius: 12px;
+	padding: 14px;
+	margin-bottom: 24px;
+	overflow: hidden;
+}
+.fl-community-discord__label {
+	font-size: .72rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .04em;
+	color: var(--wp--preset--color--muted);
+	margin-bottom: 10px;
+}
+.fl-community-discord widgetbot {
+	display: block;
+	width: 100%;
+	border-radius: 8px;
+	overflow: hidden;
+}
+
 @media (max-width: 600px) {
 	.fl-community-composer { padding: 14px; }
 	.fl-community-post { padding: 14px 16px; }
 	.fl-community-post--single { padding: 18px; }
+	.fl-community-gif { max-width: 100%; }
+	.fl-community-discord widgetbot { height: 320px !important; }
 }

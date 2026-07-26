@@ -21,6 +21,13 @@ import { getStore } from '@netlify/blobs';
 const USERS_STORE = 'identity-users';
 const NONCE_STORE = 'identity-nonces';
 const LOGIN_CODE_STORE = 'identity-login-codes';
+// Maps userId -> email (Phase 8, Task E). deriveUserId() is a one-way HMAC,
+// so a caller holding only a userId (e.g. community-reply.mts, which reads
+// a community post's author from WordPress's _fl_user_id meta — WordPress
+// itself never learns anyone's email, by design) has no way back to an
+// email without this index. Written on every saveUser() call so it can
+// never drift from the primary record.
+const USERID_INDEX_STORE = 'identity-userid-index';
 
 const MAGIC_LINK_TTL_SECONDS = 15 * 60; // 15 minutes
 // Refreshed on every verified use (Decision 11b, PHASE-8-BUILD-PLAN.md) — an
@@ -213,6 +220,11 @@ export interface UserRecord {
 	// meaningful when banned is true.
 	bannedUntil: string | null;
 	postCount: number;
+	// Added Phase 8 (Task E) — defaults to true for both pre-existing and
+	// brand-new records (normalizeUser() below / the new-user literal in
+	// verifyMagicLinkAndCreateSession()). Read by community-reply.mts before
+	// emailing a post author about a new reply.
+	notifyOnReply: boolean;
 	createdAt: string;
 }
 
@@ -243,6 +255,7 @@ function normalizeUser( user: UserRecord ): UserRecord {
 		banned: user.banned ?? false,
 		bannedUntil: user.bannedUntil ?? null,
 		postCount: user.postCount ?? 0,
+		notifyOnReply: user.notifyOnReply ?? true,
 	};
 }
 
@@ -266,6 +279,53 @@ async function getUser( email: string ): Promise< UserRecord | null > {
 async function saveUser( user: UserRecord ): Promise< void > {
 	const store = getStore( { name: USERS_STORE, consistency: 'strong' } );
 	await store.setJSON( user.email, user );
+
+	// Keeps the userId -> email index (see USERID_INDEX_STORE above) from
+	// ever drifting — every save touches both stores, so there's no separate
+	// code path to remember.
+	try {
+		const indexStore = getStore( { name: USERID_INDEX_STORE, consistency: 'strong' } );
+		await indexStore.set( user.userId, user.email );
+	} catch {
+		// Worst case: getUserByUserId() can't resolve this user until the
+		// NEXT successful save — acceptable, same fail-safe spirit as the
+		// rest of this file's Blobs writes.
+	}
+}
+
+/**
+ * Resolves an opaque userId (as stored in WordPress's _fl_user_id post/
+ * comment meta — WordPress never sees a real email, by design) back to the
+ * full user record, via the index saveUser() maintains. `null` on any
+ * failure, including "no such userId" — never throws.
+ */
+export async function getUserByUserId( userId: string ): Promise< UserRecord | null > {
+	try {
+		const indexStore = getStore( { name: USERID_INDEX_STORE, consistency: 'strong' } );
+		const email = await indexStore.get( userId );
+		if ( ! email || typeof email !== 'string' ) {
+			return null;
+		}
+		return await getUser( email );
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The account page's reply-notification opt-out (Phase 8, Task E) — the
+ * only field a member can self-serve change today, deliberately narrow
+ * rather than a general profile-update path. Silently does nothing if the
+ * user has since vanished (shouldn't happen — the caller only reaches this
+ * after verifySession() already found them).
+ */
+export async function updateNotifyOnReply( email: string, notifyOnReply: boolean ): Promise< void > {
+	const user = await getUser( email );
+	if ( ! user ) {
+		return;
+	}
+	user.notifyOnReply = notifyOnReply;
+	await saveUser( user );
 }
 
 /**
@@ -295,7 +355,7 @@ export function verifyMagicLinkTokenSignature( token: unknown ): MagicLinkPayloa
  */
 export async function verifyMagicLinkAndCreateSession(
 	token: unknown
-): Promise< { userId: string; email: string; displayName: string; sessionToken: string } | null > {
+): Promise< { userId: string; email: string; displayName: string; notifyOnReply: boolean; sessionToken: string } | null > {
 	const payload = verifyMagicLinkTokenSignature( token );
 	if ( ! payload ) {
 		return null;
@@ -333,6 +393,7 @@ export async function verifyMagicLinkAndCreateSession(
 		banned: false,
 		bannedUntil: null,
 		postCount: 0,
+		notifyOnReply: true,
 		createdAt: new Date().toISOString(),
 	};
 	// A returning visitor's freshly-typed display name updates the record —
@@ -347,6 +408,7 @@ export async function verifyMagicLinkAndCreateSession(
 		userId: user.userId,
 		email: user.email,
 		displayName: user.displayName,
+		notifyOnReply: user.notifyOnReply,
 		sessionToken: signSessionToken( user.userId, user.email, Math.floor( Date.now() / 1000 ) ),
 	};
 }
@@ -402,7 +464,7 @@ export async function createLoginCode( email: string, magicLinkToken: string ): 
 export async function verifyLoginCode(
 	rawEmail: unknown,
 	rawCode: unknown
-): Promise< { userId: string; email: string; displayName: string; sessionToken: string } | null > {
+): Promise< { userId: string; email: string; displayName: string; notifyOnReply: boolean; sessionToken: string } | null > {
 	const email = sanitizeEmail( rawEmail );
 	const code = typeof rawCode === 'string' ? rawCode.trim() : '';
 	if ( ! email || ! /^\d{6}$/.test( code ) ) {

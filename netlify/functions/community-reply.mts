@@ -18,8 +18,10 @@
 import type { Config, Context } from '@netlify/functions';
 import { getServerConfig } from '../lib/config.mts';
 import { corsHeaders } from '../lib/cors.mts';
-import { createWordPressReply, hashEmailForModeratorCheck, sanitizeReplyBody } from '../lib/community.mts';
-import { isBanned, syncModeratorRole, verifySession } from '../lib/identity.mts';
+import { createWordPressReply, hashEmailForModeratorCheck, sanitizeReplyBody, validateGifUrl } from '../lib/community.mts';
+import { getUserByUserId, isBanned, syncModeratorRole, verifySession } from '../lib/identity.mts';
+import { sendCommunityReplyNotification } from '../lib/email.mts';
+import { markNotified, wasRecentlyNotified } from '../lib/notify-dedupe.mts';
 import { checkRateLimit } from '../lib/ratelimit.mts';
 
 const CORS_OPTIONS = { methods: 'POST, OPTIONS', headers: 'content-type' };
@@ -88,8 +90,14 @@ export default async ( req: Request, context: Context ) => {
 		return json( { error: 'invalid_reply' }, 400, cors );
 	}
 
+	// A GIF that fails the allowlist is dropped silently — the reply still
+	// goes through as text-only, same as an invalid one on community-post.mts.
+	const gifUrl = validateGifUrl( b.gifUrl ) ?? undefined;
+
 	const accountAgeHours = ( Date.now() - new Date( syncedUser.createdAt ).getTime() ) / ( 1000 * 60 * 60 );
-	const containsLink = URL_RE.test( replyBody );
+	// A GIF is a link too — same new-account hold a pasted URL gets
+	// (PHASE-8-TASK-E-PLAN.md Decision 2).
+	const containsLink = URL_RE.test( replyBody ) || !! gifUrl;
 	const status = containsLink && accountAgeHours < serverConfig.communityGateHours ? 'pending' : 'publish';
 
 	const created = await createWordPressReply( {
@@ -99,9 +107,37 @@ export default async ( req: Request, context: Context ) => {
 		role: syncedUser.role,
 		body: replyBody,
 		status,
+		gifUrl,
 	} );
 	if ( ! created ) {
 		return json( { error: 'reply_failed' }, 502, cors );
+	}
+
+	// Best-effort "someone replied to your post" email (Phase 8, Task E) —
+	// never blocks or fails the reply itself, same fail-safe spirit as
+	// community-post.mts's incrementPostCount call. Skipped entirely for a
+	// HELD reply (status 'pending') — the post author shouldn't be notified
+	// about something not yet visible to them either.
+	if ( created.postAuthorUserId && created.postAuthorUserId !== syncedUser.userId && 'publish' === created.status ) {
+		try {
+			const author = await getUserByUserId( created.postAuthorUserId );
+			if ( author && false !== author.notifyOnReply ) {
+				const dedupeKey = `${ author.userId }:${ postId }`;
+				const recent = await wasRecentlyNotified( dedupeKey );
+				if ( ! recent ) {
+					await sendCommunityReplyNotification(
+						author.email,
+						created.postTitle,
+						created.postUrl,
+						syncedUser.displayName,
+						replyBody.slice( 0, 140 )
+					);
+					await markNotified( dedupeKey );
+				}
+			}
+		} catch ( error ) {
+			console.error( '[community-reply] notification best-effort failed:', error instanceof Error ? error.message : String( error ) );
+		}
 	}
 
 	return json( { success: true, ...created, sessionToken }, 200, cors );

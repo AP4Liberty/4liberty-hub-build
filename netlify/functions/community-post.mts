@@ -18,7 +18,7 @@
 import type { Config, Context } from '@netlify/functions';
 import { getServerConfig } from '../lib/config.mts';
 import { corsHeaders } from '../lib/cors.mts';
-import { createWordPressPost, hashEmailForModeratorCheck, sanitizePostBody, sanitizePostTitle } from '../lib/community.mts';
+import { createWordPressPost, hashEmailForModeratorCheck, sanitizePostBody, sanitizePostTitle, validateGifUrl } from '../lib/community.mts';
 import { incrementPostCount, isBanned, syncModeratorRole, verifySession } from '../lib/identity.mts';
 import { checkRateLimit } from '../lib/ratelimit.mts';
 
@@ -93,8 +93,19 @@ export default async ( req: Request, context: Context ) => {
 		return json( { error: 'invalid_post' }, 400, cors );
 	}
 
+	// A missing/unrecognized topic is fine — WordPress falls back to
+	// "general" itself (community-rest-routes.php); this file doesn't need
+	// its own copy of that validation.
+	const topic = typeof b.topic === 'string' && b.topic ? b.topic : undefined;
+	// A GIF URL that fails the allowlist is dropped silently, same spirit as
+	// an invalid topic — the post still goes through as text-only.
+	const gifUrl = validateGifUrl( b.gifUrl ) ?? undefined;
+
 	const accountAgeHours = ( Date.now() - new Date( syncedUser.createdAt ).getTime() ) / ( 1000 * 60 * 60 );
-	const containsLink = URL_RE.test( title ) || URL_RE.test( postBody );
+	// A GIF is a link too — it gets the exact same new-account hold a
+	// pasted URL in the title/body would (PHASE-8-TASK-E-PLAN.md Decision 2:
+	// "the same gate applies to _fl_gif_url with no new logic").
+	const containsLink = URL_RE.test( title ) || URL_RE.test( postBody ) || !! gifUrl;
 	const status = containsLink && accountAgeHours < serverConfig.communityGateHours ? 'pending' : 'publish';
 
 	const created = await createWordPressPost( {
@@ -104,6 +115,8 @@ export default async ( req: Request, context: Context ) => {
 		title,
 		body: postBody,
 		status,
+		topic,
+		gifUrl,
 	} );
 	if ( ! created ) {
 		return json( { error: 'post_failed' }, 502, cors );

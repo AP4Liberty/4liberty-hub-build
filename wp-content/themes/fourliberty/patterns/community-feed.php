@@ -26,19 +26,68 @@ if ( ! defined( 'ABSPATH' ) ) {
 // both is the standard, robust way to paginate a custom loop on a Page.
 $fl_paged = get_query_var( 'paged' ) ? (int) get_query_var( 'paged' ) : ( get_query_var( 'page' ) ? (int) get_query_var( 'page' ) : 1 );
 
-$fl_community_query = new WP_Query(
-	array(
-		'post_type'      => 'fl_community_post',
-		'post_status'    => 'publish',
-		'posts_per_page' => 15,
-		'paged'          => $fl_paged,
-		'orderby'        => 'date',
-		'order'          => 'DESC',
-	)
+// Categories (Phase 8, Task E) — a FILTER on the one unified feed, never a
+// separate room (PHASE-8-TASK-E-PLAN.md Decision 1). ?topic= is validated
+// against real, existing terms only; anything else is ignored rather than
+// erroring, so a stale/bad link just falls back to "All".
+$fl_all_topics  = function_exists( 'fourliberty_hub_get_community_topics' ) ? fourliberty_hub_get_community_topics() : array();
+$fl_topic_slugs = wp_list_pluck( $fl_all_topics, 'slug' );
+$fl_topic_slug  = isset( $_GET['topic'] ) ? sanitize_title( wp_unslash( $_GET['topic'] ) ) : '';
+if ( ! in_array( $fl_topic_slug, $fl_topic_slugs, true ) ) {
+	$fl_topic_slug = '';
+}
+
+$fl_query_args = array(
+	'post_type'      => 'fl_community_post',
+	'post_status'    => 'publish',
+	'posts_per_page' => 15,
+	'paged'          => $fl_paged,
+	'orderby'        => 'date',
+	'order'          => 'DESC',
 );
+if ( $fl_topic_slug ) {
+	$fl_query_args['tax_query'] = array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query -- a single, already-validated exact-slug filter on a small custom post type; not a candidate for the usual tax_query performance concerns.
+		array(
+			'taxonomy' => 'fl_community_topic',
+			'field'    => 'slug',
+			'terms'    => $fl_topic_slug,
+		),
+	);
+}
+$fl_community_query = new WP_Query( $fl_query_args );
+
+// Discord embed (Phase 8, Task F) — a display setting only, so read
+// directly, same-request, no /server-config bridge needed (contrast with
+// communityMode/moderatorEmails, which DO need that bridge because they're
+// security-enforced). Only the server ID is required — confirmed directly
+// against WidgetBot's own dashboard-generated snippet for Austin's actual
+// server, which omits `channel` entirely and still works (it defaults to
+// the server's main channel; visitors can switch channels inside the
+// widget itself). Requiring a channel ID too would have been one more
+// "find this ID in Discord" step than the feature actually needs.
+$fl_community_cfg  = fourliberty_community_config();
+$fl_discord_enabled = ! empty( $fl_community_cfg['discordWidgetEnabled'] )
+	&& ! empty( $fl_community_cfg['discordWidgetServerId'] );
 ?>
 <!-- wp:group {"layout":{"type":"constrained","contentSize":"820px"}} -->
 <div class="wp-block-group">
+
+	<?php if ( $fl_discord_enabled ) : ?>
+	<!-- wp:html -->
+	<div class="fl-community-discord">
+		<div class="fl-community-discord__label">Live from Discord</div>
+		<widgetbot
+			server="<?php echo esc_attr( $fl_community_cfg['discordWidgetServerId'] ); ?>"
+			<?php if ( ! empty( $fl_community_cfg['discordWidgetChannelId'] ) ) : ?>
+			channel="<?php echo esc_attr( $fl_community_cfg['discordWidgetChannelId'] ); ?>"
+			<?php endif; ?>
+			width="100%"
+			height="420"
+		></widgetbot>
+	</div>
+	<script src="https://cdn.jsdelivr.net/npm/@widgetbot/html-embed"></script>
+	<!-- /wp:html -->
+	<?php endif; ?>
 
 	<!-- wp:html -->
 	<div class="fl-community-composer" data-fl="community-composer-area">
@@ -46,6 +95,16 @@ $fl_community_query = new WP_Query(
 		<form class="fl-community-composer__form" data-fl="community-composer-form" hidden>
 			<input type="text" name="title" placeholder="Give it a title" maxlength="200" required />
 			<textarea name="body" rows="4" placeholder="What&#8217;s on your mind?" maxlength="10000" required></textarea>
+			<div class="fl-community-composer__extras">
+				<?php if ( $fl_all_topics ) : ?>
+				<select name="topic" class="fl-community-composer__topic">
+					<?php foreach ( $fl_all_topics as $fl_topic_option ) : ?>
+					<option value="<?php echo esc_attr( $fl_topic_option->slug ); ?>" <?php selected( 'general', $fl_topic_option->slug ); ?>><?php echo esc_html( $fl_topic_option->name ); ?></option>
+					<?php endforeach; ?>
+				</select>
+				<?php endif; ?>
+				<input type="url" name="gifUrl" class="fl-community-composer__gif" placeholder="Paste a Giphy or Tenor link (optional)" />
+			</div>
 			<div class="fl-community-composer__row">
 				<span class="fl-community-composer__status" data-fl="community-composer-status"></span>
 				<button type="submit" class="fl-community-composer__submit">Post</button>
@@ -54,23 +113,41 @@ $fl_community_query = new WP_Query(
 	</div>
 	<!-- /wp:html -->
 
+	<?php if ( $fl_all_topics ) : ?>
+	<!-- wp:html -->
+	<div class="fl-community-topic-chips">
+		<a href="<?php echo esc_url( remove_query_arg( array( 'topic', 'paged' ) ) ); ?>" class="fl-community-topic-chip<?php echo '' === $fl_topic_slug ? ' is-active' : ''; ?>">All</a>
+		<?php foreach ( $fl_all_topics as $fl_topic_chip ) : ?>
+		<a href="<?php echo esc_url( add_query_arg( 'topic', $fl_topic_chip->slug, remove_query_arg( 'paged' ) ) ); ?>" class="fl-community-topic-chip<?php echo $fl_topic_slug === $fl_topic_chip->slug ? ' is-active' : ''; ?>"><?php echo esc_html( $fl_topic_chip->name ); ?></a>
+		<?php endforeach; ?>
+	</div>
+	<!-- /wp:html -->
+	<?php endif; ?>
+
 	<?php if ( $fl_community_query->have_posts() ) : ?>
 
 	<!-- wp:html -->
 	<div class="fl-community-feed">
 		<?php foreach ( $fl_community_query->posts as $fl_post ) :
-			$fl_name = get_post_meta( $fl_post->ID, '_fl_display_name', true );
-			$fl_name = $fl_name ? $fl_name : 'A member';
-			$fl_role = get_post_meta( $fl_post->ID, '_fl_role', true );
+			$fl_name        = get_post_meta( $fl_post->ID, '_fl_display_name', true );
+			$fl_name        = $fl_name ? $fl_name : 'A member';
+			$fl_role        = get_post_meta( $fl_post->ID, '_fl_role', true );
+			$fl_gif         = fourliberty_community_safe_gif_url( get_post_meta( $fl_post->ID, '_fl_gif_url', true ) );
+			$fl_topic_terms = get_the_terms( $fl_post, 'fl_community_topic' );
+			$fl_topic_term  = ( is_array( $fl_topic_terms ) && ! empty( $fl_topic_terms ) ) ? $fl_topic_terms[0] : null;
 			?>
 		<article class="fl-community-post">
 			<h3 class="fl-community-post__title"><a href="<?php echo esc_url( get_permalink( $fl_post ) ); ?>"><?php echo esc_html( get_the_title( $fl_post ) ); ?></a></h3>
 			<div class="fl-community-post__meta">
 				<span class="fl-community-post__author"><?php echo esc_html( $fl_name ); ?></span>
 				<?php if ( 'moderator' === $fl_role ) : ?><span class="fl-badge fl-badge--mod">MOD</span><?php endif; ?>
+				<?php if ( $fl_topic_term ) : ?><span class="fl-community-post__topic"><?php echo esc_html( $fl_topic_term->name ); ?></span><?php endif; ?>
 				<span class="fl-community-post__date"><?php echo esc_html( get_the_date( 'M j', $fl_post ) ); ?></span>
 			</div>
 			<p class="fl-community-post__excerpt"><?php echo esc_html( wp_trim_words( $fl_post->post_content, 40 ) ); ?></p>
+			<?php if ( $fl_gif ) : ?>
+			<div class="fl-community-gif"><img src="<?php echo esc_url( $fl_gif ); ?>" alt="" loading="lazy" /></div>
+			<?php endif; ?>
 			<a class="fl-community-post__link" href="<?php echo esc_url( get_permalink( $fl_post ) ); ?>">Read &amp; reply &rarr;</a>
 		</article>
 		<?php endforeach; ?>

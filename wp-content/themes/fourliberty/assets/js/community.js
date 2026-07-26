@@ -105,6 +105,11 @@
 			var s = session();
 			var title = form.elements.title.value.trim();
 			var body = form.elements.body.value.trim();
+			// Both optional (Phase 8, Task E) — a missing/invalid topic falls
+			// back to "General" server-side; a missing/invalid GIF link is
+			// just dropped, the post still goes through as text-only.
+			var topic = form.elements.topic ? form.elements.topic.value : '';
+			var gifUrl = form.elements.gifUrl ? form.elements.gifUrl.value.trim() : '';
 			if ( ! s || ! title || ! body ) {
 				return;
 			}
@@ -112,10 +117,18 @@
 			submitBtn.disabled = true;
 			setStatus( statusEl, 'Posting…', false );
 
+			var payload = { sessionToken: s.token, title: title, body: body };
+			if ( topic ) {
+				payload.topic = topic;
+			}
+			if ( gifUrl ) {
+				payload.gifUrl = gifUrl;
+			}
+
 			fetch( POST_ENDPOINT, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify( { sessionToken: s.token, title: title, body: body } ),
+				body: JSON.stringify( payload ),
 			} )
 				.then( function ( res ) {
 					return res.json().then( function ( data ) {
@@ -159,6 +172,7 @@
 			evt.preventDefault();
 			var s = session();
 			var body = form.elements.body.value.trim();
+			var gifUrl = form.elements.gifUrl ? form.elements.gifUrl.value.trim() : '';
 			if ( ! s || ! postId || ! body ) {
 				return;
 			}
@@ -166,10 +180,15 @@
 			submitBtn.disabled = true;
 			setStatus( statusEl, 'Posting…', false );
 
+			var payload = { sessionToken: s.token, postId: postId, body: body };
+			if ( gifUrl ) {
+				payload.gifUrl = gifUrl;
+			}
+
 			fetch( REPLY_ENDPOINT, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify( { sessionToken: s.token, postId: postId, body: body } ),
+				body: JSON.stringify( payload ),
 			} )
 				.then( function ( res ) {
 					return res.json().then( function ( data ) {

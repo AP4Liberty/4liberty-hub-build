@@ -110,6 +110,20 @@ function fourliberty_hub_community_create_post( WP_REST_Request $request ) {
 	$role         = fourliberty_hub_community_sanitize_role( $body['role'] ?? null );
 	$status       = fourliberty_hub_community_sanitize_status( $body['status'] ?? null );
 
+	// An unrecognized or missing topic always falls back to "general" — never
+	// rejected outright, since a category is a filing detail, not something
+	// worth failing the whole post over (PHASE-8-TASK-E-PLAN.md Decision 1).
+	$topic_slug = isset( $body['topic'] ) ? sanitize_title( (string) $body['topic'] ) : '';
+	if ( '' === $topic_slug || ! term_exists( $topic_slug, FOURLIBERTY_COMMUNITY_TOPIC_TAXONOMY ) ) {
+		$topic_slug = 'general';
+	}
+
+	// Re-validated here even though Netlify already checked — belt and
+	// suspenders, same posture as the text sanitizers above (this file's
+	// header: "already checked upstream" and "cannot be bypassed" are
+	// different guarantees). Silently empty on anything invalid, never an error.
+	$gif_url = isset( $body['gifUrl'] ) ? fourliberty_hub_validate_gif_url( $body['gifUrl'] ) : '';
+
 	if ( '' === $user_id || strlen( $user_id ) > FOURLIBERTY_COMMUNITY_MAX_USER_ID ) {
 		return new WP_Error( 'invalid_user_id', __( 'Missing or invalid userId.', 'fourliberty-hub' ), array( 'status' => 400 ) );
 	}
@@ -146,6 +160,11 @@ function fourliberty_hub_community_create_post( WP_REST_Request $request ) {
 	update_post_meta( $post_id, '_fl_display_name', $display_name );
 	update_post_meta( $post_id, '_fl_role', $role );
 	update_post_meta( $post_id, '_fl_flags', 0 );
+	if ( $gif_url ) {
+		update_post_meta( $post_id, '_fl_gif_url', $gif_url );
+	}
+
+	wp_set_object_terms( $post_id, $topic_slug, FOURLIBERTY_COMMUNITY_TOPIC_TAXONOMY );
 
 	return new WP_REST_Response(
 		array(
@@ -170,6 +189,7 @@ function fourliberty_hub_community_create_reply( WP_REST_Request $request ) {
 	$content      = isset( $body['body'] ) ? sanitize_textarea_field( (string) $body['body'] ) : '';
 	$role         = fourliberty_hub_community_sanitize_role( $body['role'] ?? null );
 	$status       = fourliberty_hub_community_sanitize_status( $body['status'] ?? null );
+	$gif_url      = isset( $body['gifUrl'] ) ? fourliberty_hub_validate_gif_url( $body['gifUrl'] ) : '';
 
 	if ( '' === $user_id || strlen( $user_id ) > FOURLIBERTY_COMMUNITY_MAX_USER_ID ) {
 		return new WP_Error( 'invalid_user_id', __( 'Missing or invalid userId.', 'fourliberty-hub' ), array( 'status' => 400 ) );
@@ -208,12 +228,25 @@ function fourliberty_hub_community_create_reply( WP_REST_Request $request ) {
 	update_comment_meta( $comment_id, '_fl_user_id', $user_id );
 	update_comment_meta( $comment_id, '_fl_display_name', $display_name );
 	update_comment_meta( $comment_id, '_fl_role', $role );
+	if ( $gif_url ) {
+		update_comment_meta( $comment_id, '_fl_gif_url', $gif_url );
+	}
 
 	return new WP_REST_Response(
 		array(
-			'success'   => true,
-			'commentId' => $comment_id,
-			'status'    => $status,
+			'success'          => true,
+			'commentId'        => $comment_id,
+			'status'           => $status,
+			// The three fields below are for Netlify's best-effort "notify
+			// the original post author" step (community-reply.mts) — $post
+			// is already loaded above for validation, so this is free. Never
+			// the REPLIER's own info; WordPress still never learns anyone's
+			// email either way (PHASE-8-BUILD-PLAN.md's identity-secret
+			// boundary) — only the opaque _fl_user_id, which Netlify resolves
+			// back to an email via its OWN userId index, not WordPress's.
+			'postAuthorUserId' => (string) get_post_meta( $post_id, '_fl_user_id', true ),
+			'postTitle'        => $post->post_title,
+			'postUrl'          => get_permalink( $post_id ),
 		),
 		201
 	);

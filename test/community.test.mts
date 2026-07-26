@@ -17,6 +17,7 @@ import {
 	sanitizePostBody,
 	sanitizePostTitle,
 	sanitizeReplyBody,
+	validateGifUrl,
 } from '../netlify/lib/community.mts';
 
 describe( 'sanitizePostTitle', () => {
@@ -126,5 +127,60 @@ describe( 'hashEmailForModeratorCheck', () => {
 	it( 'never contains the email itself', () => {
 		const result = hashEmailForModeratorCheck( 'austin@example.com' );
 		assert.ok( ! result.includes( 'austin' ) );
+	} );
+} );
+
+describe( 'validateGifUrl', () => {
+	it( 'accepts a real Giphy .gif URL', () => {
+		assert.equal( validateGifUrl( 'https://media.giphy.com/media/abc123/giphy.gif' ), 'https://media.giphy.com/media/abc123/giphy.gif' );
+	} );
+
+	it( 'accepts every host on the allowlist', () => {
+		for ( const host of [ 'media.giphy.com', 'i.giphy.com', 'media.tenor.com', 'c.tenor.com' ] ) {
+			assert.ok( validateGifUrl( `https://${ host }/x.gif` ) );
+		}
+	} );
+
+	it( 'accepts .webp and .mp4 as well as .gif', () => {
+		assert.ok( validateGifUrl( 'https://media.giphy.com/x.webp' ) );
+		assert.ok( validateGifUrl( 'https://media.giphy.com/x.mp4' ) );
+	} );
+
+	it( 'is case-insensitive on host and extension', () => {
+		assert.ok( validateGifUrl( 'https://MEDIA.GIPHY.COM/x.GIF' ) );
+	} );
+
+	it( 'rejects a host that merely CONTAINS an allowed host as a substring — the exact bypass this allowlist exists to stop', () => {
+		assert.equal( validateGifUrl( 'https://media.giphy.com.evil.tld/x.gif' ), null );
+		assert.equal( validateGifUrl( 'https://evil-media.giphy.com/x.gif' ), null );
+		assert.equal( validateGifUrl( 'https://evil.tld/media.giphy.com/x.gif' ), null );
+	} );
+
+	it( 'rejects userinfo tricks (host that LOOKS allowlisted before an @)', () => {
+		assert.equal( validateGifUrl( 'https://media.giphy.com@evil.tld/x.gif' ), null );
+	} );
+
+	it( 'rejects a non-allowlisted host entirely', () => {
+		assert.equal( validateGifUrl( 'https://example.com/x.gif' ), null );
+	} );
+
+	it( 'rejects http (non-https)', () => {
+		assert.equal( validateGifUrl( 'http://media.giphy.com/x.gif' ), null );
+	} );
+
+	it( 'rejects a disallowed or missing extension', () => {
+		assert.equal( validateGifUrl( 'https://media.giphy.com/x.png' ), null );
+		assert.equal( validateGifUrl( 'https://media.giphy.com/x' ), null );
+		assert.equal( validateGifUrl( 'https://media.giphy.com/' ), null );
+	} );
+
+	it( 'rejects a malformed URL without throwing', () => {
+		assert.equal( validateGifUrl( 'not a url' ), null );
+	} );
+
+	it( 'rejects non-string and empty input without throwing', () => {
+		for ( const input of [ null, undefined, 42, {}, [], true, '', '   ' ] ) {
+			assert.equal( validateGifUrl( input ), null );
+		}
 	} );
 } );

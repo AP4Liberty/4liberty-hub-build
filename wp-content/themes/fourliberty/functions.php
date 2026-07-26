@@ -234,6 +234,11 @@ function fourliberty_assets() {
 		'fourlibertyAuthCodeEndpoint',
 		array( 'url' => fourliberty_auth_code_endpoint() )
 	);
+	wp_localize_script(
+		'fourliberty-account',
+		'fourlibertyAccountSettingsEndpoint',
+		array( 'url' => fourliberty_account_settings_endpoint() )
+	);
 
 	// Community page composer/reply/report (Phase 8, Task D). No-ops
 	// immediately unless its own markup ([data-fl="community-composer-
@@ -362,6 +367,28 @@ function fourliberty_community_report_endpoint() {
 		: 'https://4liberty-poller.netlify.app/api/community-report';
 }
 
+/** The account-settings Netlify function's public endpoint — same backend site. */
+function fourliberty_account_settings_endpoint() {
+	return defined( 'FOURLIBERTY_ACCOUNT_SETTINGS_ENDPOINT' )
+		? FOURLIBERTY_ACCOUNT_SETTINGS_ENDPOINT
+		: 'https://4liberty-poller.netlify.app/api/account-settings';
+}
+
+/**
+ * Re-validates a stored GIF URL at RENDER time, not just on write — belt-
+ * and-suspenders alongside community-rest-routes.php's write-time check
+ * (PHASE-8-TASK-E-PLAN.md Decision 2: "both, not either"). Falls back to
+ * empty if the plugin isn't active, same defensive habit as this file's
+ * other bridges to plugin-owned logic (e.g. fourliberty_hub_live_shows_
+ * config() callers elsewhere in this file).
+ */
+function fourliberty_community_safe_gif_url( $raw ) {
+	if ( ! $raw || ! function_exists( 'fourliberty_hub_validate_gif_url' ) ) {
+		return '';
+	}
+	return fourliberty_hub_validate_gif_url( $raw );
+}
+
 /** The config-status Netlify function's public endpoint — same backend site. */
 function fourliberty_config_status_endpoint() {
 	return defined( 'FOURLIBERTY_CONFIG_STATUS_ENDPOINT' )
@@ -443,14 +470,22 @@ function fourliberty_chat_tips_config() {
  */
 function fourliberty_community_config() {
 	$defaults = array(
-		'paused'              => false,
-		'communityMode'       => 'open',
-		'postRateLimit'       => 5,
-		'replyRateLimit'      => 20,
-		'newAccountGateHours' => 24,
-		'moderatorEmails'     => array(),
-		'reservedNames'       => array(),
-		'roomName'            => 'The Lobby',
+		'paused'                  => false,
+		'communityMode'           => 'open',
+		'postRateLimit'           => 5,
+		'replyRateLimit'          => 20,
+		'newAccountGateHours'     => 24,
+		'moderatorEmails'         => array(),
+		'reservedNames'           => array(),
+		'roomName'                => 'The Lobby',
+		// The WidgetBot Discord embed at the top of /community/ (Phase 8,
+		// Task F) — purely a display setting, never security-enforced, so
+		// unlike communityMode/moderatorEmails above it does NOT need the
+		// /server-config bridge to Netlify; the theme reads it directly,
+		// same-request, server-side.
+		'discordWidgetEnabled'    => false,
+		'discordWidgetServerId'   => '',
+		'discordWidgetChannelId'  => '',
 	);
 
 	$stored = get_option( 'fourliberty_community_config' );

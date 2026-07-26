@@ -27,6 +27,9 @@
 	var AUTH_CODE_ENDPOINT =
 		( window.fourlibertyAuthCodeEndpoint && window.fourlibertyAuthCodeEndpoint.url ) ||
 		'https://4liberty-poller.netlify.app/api/auth-code';
+	var ACCOUNT_SETTINGS_ENDPOINT =
+		( window.fourlibertyAccountSettingsEndpoint && window.fourlibertyAccountSettingsEndpoint.url ) ||
+		'https://4liberty-poller.netlify.app/api/account-settings';
 
 	var SESSION_STORAGE_KEY = 'fl-session';
 	var VERIFY_PARAM = 'fl_verify';
@@ -158,6 +161,21 @@
 		var text = document.createElement( 'span' );
 		text.textContent = 'Logged in as ' + session.email;
 
+		// Reply-notification opt-out (Phase 8, Task E) — lives right here
+		// rather than on a dedicated "account page" (none exists yet) so
+		// it's reachable everywhere this control already renders: the
+		// homepage chat rail AND the Community composer.
+		var notifyLabel = document.createElement( 'label' );
+		notifyLabel.className = 'fl-account__notify';
+		var notifyCheckbox = document.createElement( 'input' );
+		notifyCheckbox.type = 'checkbox';
+		notifyCheckbox.checked = session.notifyOnReply !== false;
+		notifyCheckbox.addEventListener( 'change', function () {
+			updateNotifyOnReply( notifyCheckbox.checked, notifyCheckbox );
+		} );
+		notifyLabel.appendChild( notifyCheckbox );
+		notifyLabel.appendChild( document.createTextNode( ' Email me on replies' ) );
+
 		var logoutBtn = document.createElement( 'button' );
 		logoutBtn.type = 'button';
 		logoutBtn.className = 'fl-account__link';
@@ -168,8 +186,50 @@
 
 		row.appendChild( text );
 		row.appendChild( document.createTextNode( ' · ' ) );
+		row.appendChild( notifyLabel );
+		row.appendChild( document.createTextNode( ' · ' ) );
 		row.appendChild( logoutBtn );
 		container.appendChild( row );
+	}
+
+	/**
+	 * Persists the reply-notification toggle server-side, reverting the
+	 * checkbox on any failure so it never silently lies about the saved
+	 * state. A reissued session token (same sliding-session shape every
+	 * other authenticated call in this project uses) rides back on success.
+	 */
+	function updateNotifyOnReply( value, checkbox ) {
+		if ( ! session ) {
+			return;
+		}
+		checkbox.disabled = true;
+
+		fetch( ACCOUNT_SETTINGS_ENDPOINT, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify( { sessionToken: session.token, notifyOnReply: value } ),
+		} )
+			.then( function ( res ) {
+				return res.json().then( function ( data ) {
+					return { ok: res.ok, data: data };
+				} );
+			} )
+			.then( function ( result ) {
+				checkbox.disabled = false;
+				if ( result.ok && result.data && result.data.success ) {
+					session.notifyOnReply = !! result.data.notifyOnReply;
+					saveSession( session );
+					if ( result.data.sessionToken ) {
+						window.FLHub.identity.updateSessionToken( result.data.sessionToken );
+					}
+				} else {
+					checkbox.checked = ! value;
+				}
+			} )
+			.catch( function () {
+				checkbox.disabled = false;
+				checkbox.checked = ! value;
+			} );
 	}
 
 	function renderLoggedOut( container ) {
@@ -338,6 +398,7 @@
 			userId: data.userId,
 			email: data.email,
 			displayName: data.displayName,
+			notifyOnReply: data.notifyOnReply !== false,
 		};
 		saveSession( session );
 		render();

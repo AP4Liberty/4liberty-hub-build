@@ -33,6 +33,7 @@ require_once FOURLIBERTY_HUB_PATH . 'includes/settings-dark-channel.php';
 require_once FOURLIBERTY_HUB_PATH . 'includes/settings-chat-tips.php';
 require_once FOURLIBERTY_HUB_PATH . 'includes/settings-product-push.php';
 require_once FOURLIBERTY_HUB_PATH . 'includes/settings-shop-ad.php';
+require_once FOURLIBERTY_HUB_PATH . 'includes/settings-analytics.php';
 require_once FOURLIBERTY_HUB_PATH . 'includes/community-post-type.php';
 require_once FOURLIBERTY_HUB_PATH . 'includes/community-rest-routes.php';
 require_once FOURLIBERTY_HUB_PATH . 'includes/settings-community.php';

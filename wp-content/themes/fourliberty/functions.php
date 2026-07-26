@@ -648,6 +648,39 @@ function fourliberty_shop_ad_config() {
 }
 
 /**
+ * Google Analytics measurement ID, written by the plugin's
+ * includes/settings-analytics.php — same seam pattern as the config
+ * functions above. Empty string = tracking off entirely.
+ */
+function fourliberty_analytics_measurement_id() {
+	$stored = get_option( 'fourliberty_analytics_config' );
+	$id     = is_array( $stored ) ? ( $stored['measurementId'] ?? '' ) : '';
+	return preg_match( '/^G-[A-Z0-9]{4,16}$/', $id ) ? $id : '';
+}
+
+/**
+ * The standard GA4 gtag snippet, printed early in <head> on every front-end
+ * page when a measurement ID is configured. Logged-in admins are excluded so
+ * Austin/Brad's own browsing never skews a ~50-daily-visitor dataset.
+ */
+function fourliberty_analytics_head() {
+	$id = fourliberty_analytics_measurement_id();
+	if ( '' === $id || current_user_can( 'manage_options' ) ) {
+		return;
+	}
+	?>
+	<script async src="https://www.googletagmanager.com/gtag/js?id=<?php echo esc_attr( $id ); ?>"></script>
+	<script>
+	window.dataLayer = window.dataLayer || [];
+	function gtag(){dataLayer.push(arguments);}
+	gtag('js', new Date());
+	gtag('config', '<?php echo esc_js( $id ); ?>');
+	</script>
+	<?php
+}
+add_action( 'wp_head', 'fourliberty_analytics_head', 4 );
+
+/**
  * Register the theme's block pattern category so the front-page patterns
  * (hero, newsroom grid, channel strip, newsletter, support band) group
  * together in the pattern inserter instead of scattering into "Uncategorized".

@@ -153,6 +153,8 @@ function fourliberty_hub_community_config() {
 		'discordWidgetEnabled'   => false,
 		'discordWidgetServerId'  => '',
 		'discordWidgetChannelId' => '',
+		'forumMode'              => 'builtin',
+		'forumUrl'               => '',
 	);
 }
 
@@ -212,6 +214,18 @@ function fourliberty_hub_community_maybe_save() {
 	$discord_server_id      = isset( $_POST['fourliberty_community_discord_server_id'] ) ? fourliberty_hub_sanitize_discord_id( wp_unslash( $_POST['fourliberty_community_discord_server_id'] ) ) : '';
 	$discord_channel_id     = isset( $_POST['fourliberty_community_discord_channel_id'] ) ? fourliberty_hub_sanitize_discord_id( wp_unslash( $_POST['fourliberty_community_discord_channel_id'] ) ) : '';
 
+	// Phase 9 (Discourse trial) — whitelist against the three literals only;
+	// anything else (a tampered POST, a future removed option) silently falls
+	// back to 'builtin' rather than erroring, since 'builtin' is always safe
+	// to render. forumUrl is required to be a real https:// URL or it's
+	// dropped entirely — a promo card with no destination is worse than no
+	// card at all (community-feed.php falls back to 'builtin' if this is
+	// blank, as a second layer of the same guard).
+	$forum_mode_raw = isset( $_POST['fourliberty_community_forum_mode'] ) ? wp_unslash( $_POST['fourliberty_community_forum_mode'] ) : 'builtin';
+	$forum_mode     = in_array( $forum_mode_raw, array( 'builtin', 'forum', 'both' ), true ) ? $forum_mode_raw : 'builtin';
+	$forum_url_raw  = isset( $_POST['fourliberty_community_forum_url'] ) ? esc_url_raw( wp_unslash( $_POST['fourliberty_community_forum_url'] ) ) : '';
+	$forum_url      = ( 0 === strpos( $forum_url_raw, 'https://' ) ) ? $forum_url_raw : '';
+
 	// Own option, own rule: a BLANK submit never touches the stored secret
 	// — the field is never pre-filled with the real value (see this file's
 	// header), so "I didn't type anything here" must mean "leave it alone,"
@@ -235,6 +249,8 @@ function fourliberty_hub_community_maybe_save() {
 		'discordWidgetEnabled'   => $discord_widget_enabled,
 		'discordWidgetServerId'  => $discord_server_id,
 		'discordWidgetChannelId' => $discord_channel_id,
+		'forumMode'              => $forum_mode,
+		'forumUrl'               => $forum_url,
 	);
 
 	update_option( FOURLIBERTY_HUB_COMMUNITY_OPTION, $config );
@@ -372,6 +388,30 @@ function fourliberty_hub_render_community() {
 				<tr>
 					<th scope="row"><label for="fourliberty_community_room_name"><?php esc_html_e( 'Room name', 'fourliberty-hub' ); ?></label></th>
 					<td><input type="text" id="fourliberty_community_room_name" name="fourliberty_community_room_name" value="<?php echo esc_attr( $config['roomName'] ); ?>" class="regular-text" /></td>
+				</tr>
+			</table>
+
+			<h2 class="title"><?php esc_html_e( 'Community page mode', 'fourliberty-hub' ); ?></h2>
+			<div style="background:#fff;border:1px solid #dcdcde;padding:12px 16px;max-width:640px;margin-bottom:16px;border-radius:4px;">
+				<p><?php esc_html_e( 'Trying Discourse as the forum instead of the built-in one? Set this to point people at it. Switching back to "Built-in forum" restores the page exactly as it is today — nothing here is ever deleted.', 'fourliberty-hub' ); ?></p>
+			</div>
+			<table class="form-table" role="presentation">
+				<tr>
+					<th scope="row"><label for="fourliberty_community_forum_mode"><?php esc_html_e( 'Community page mode', 'fourliberty-hub' ); ?></label></th>
+					<td>
+						<select id="fourliberty_community_forum_mode" name="fourliberty_community_forum_mode">
+							<option value="builtin" <?php selected( 'builtin', $config['forumMode'] ); ?>><?php esc_html_e( 'Built-in forum (current)', 'fourliberty-hub' ); ?></option>
+							<option value="forum" <?php selected( 'forum', $config['forumMode'] ); ?>><?php esc_html_e( 'Discourse forum — hide the built-in feed', 'fourliberty-hub' ); ?></option>
+							<option value="both" <?php selected( 'both', $config['forumMode'] ); ?>><?php esc_html_e( 'Show both', 'fourliberty-hub' ); ?></option>
+						</select>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="fourliberty_community_forum_url"><?php esc_html_e( 'Forum address', 'fourliberty-hub' ); ?></label></th>
+					<td>
+						<input type="url" id="fourliberty_community_forum_url" name="fourliberty_community_forum_url" value="<?php echo esc_attr( $config['forumUrl'] ); ?>" class="regular-text" placeholder="https://community.4libertynetwork.com" />
+						<p class="description"><?php esc_html_e( 'Must start with https://. If this is left blank, the page always shows the built-in forum no matter what\'s picked above.', 'fourliberty-hub' ); ?></p>
+					</td>
 				</tr>
 			</table>
 

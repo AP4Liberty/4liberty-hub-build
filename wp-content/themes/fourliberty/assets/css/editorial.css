@@ -2129,6 +2129,47 @@ a.fl-tier:hover { border-color: var(--wp--preset--color--gold-deep); }
 }
 .fl-community-gif img { display: block; width: 100%; height: auto; }
 
+.fl-forum-promo {
+	background: var(--wp--preset--color--surface);
+	border: 1px solid var(--wp--preset--color--gold-deep);
+	border-radius: 12px;
+	padding: 20px;
+	margin-bottom: 24px;
+	text-align: center;
+}
+.fl-forum-promo__label {
+	font-size: .72rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .04em;
+	color: var(--wp--preset--color--gold);
+	margin-bottom: 8px;
+}
+.fl-forum-promo__title {
+	margin: 0 0 6px;
+	font-size: 1.3rem;
+}
+.fl-forum-promo__body {
+	margin: 0 0 16px;
+	color: var(--wp--preset--color--muted);
+	font-size: .92rem;
+}
+.fl-forum-promo__cta {
+	display: inline-block;
+	color: var(--wp--preset--color--gold);
+	background: rgba(230,186,87,.12);
+	border: 1px solid var(--wp--preset--color--gold-deep);
+	border-radius: var(--fl-radius-pill);
+	padding: 10px 24px;
+	font-weight: 700;
+	text-decoration: none;
+	transition: background .12s, border-color .12s;
+}
+.fl-forum-promo__cta:hover {
+	background: rgba(230,186,87,.2);
+	border-color: var(--wp--preset--color--gold);
+}
+
 .fl-community-discord {
 	background: var(--wp--preset--color--surface);
 	border: 1px solid var(--wp--preset--color--line);
@@ -2158,4 +2199,6 @@ a.fl-tier:hover { border-color: var(--wp--preset--color--gold-deep); }
 	.fl-community-post--single { padding: 18px; }
 	.fl-community-gif { max-width: 100%; }
 	.fl-community-discord widgetbot { height: 320px !important; }
+	.fl-forum-promo { padding: 16px; }
+	.fl-forum-promo__cta { display: block; width: 100%; box-sizing: border-box; }
 }

@@ -37,24 +37,46 @@ if ( ! in_array( $fl_topic_slug, $fl_topic_slugs, true ) ) {
 	$fl_topic_slug = '';
 }
 
-$fl_query_args = array(
-	'post_type'      => 'fl_community_post',
-	'post_status'    => 'publish',
-	'posts_per_page' => 15,
-	'paged'          => $fl_paged,
-	'orderby'        => 'date',
-	'order'          => 'DESC',
-);
-if ( $fl_topic_slug ) {
-	$fl_query_args['tax_query'] = array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query -- a single, already-validated exact-slug filter on a small custom post type; not a candidate for the usual tax_query performance concerns.
-		array(
-			'taxonomy' => 'fl_community_topic',
-			'field'    => 'slug',
-			'terms'    => $fl_topic_slug,
-		),
-	);
+// Loaded here (rather than down by the Discord section, its previous home)
+// because the forum-mode check right below needs it first.
+$fl_community_cfg = fourliberty_community_config();
+
+// Phase 9 (Discourse trial) — a display-only mode switch, same non-bridged
+// pattern as the Discord widget fields just below. forumUrl blank forces
+// 'builtin' even if 'forumMode' says otherwise, so a half-configured trial
+// (mode flipped before the URL is saved) never renders a dead-end promo
+// card with nowhere to send people.
+$fl_forum_mode = isset( $fl_community_cfg['forumMode'] ) ? $fl_community_cfg['forumMode'] : 'builtin';
+$fl_forum_url  = isset( $fl_community_cfg['forumUrl'] ) ? $fl_community_cfg['forumUrl'] : '';
+if ( '' === $fl_forum_url ) {
+	$fl_forum_mode = 'builtin';
 }
-$fl_community_query = new WP_Query( $fl_query_args );
+$fl_show_forum_promo = ( 'builtin' !== $fl_forum_mode );
+$fl_show_builtin     = ( 'forum' !== $fl_forum_mode );
+
+// The custom-post-type query only needs to run when the built-in feed is
+// actually going to render — 'forum' mode has no use for it.
+$fl_community_query = null;
+if ( $fl_show_builtin ) {
+	$fl_query_args = array(
+		'post_type'      => 'fl_community_post',
+		'post_status'    => 'publish',
+		'posts_per_page' => 15,
+		'paged'          => $fl_paged,
+		'orderby'        => 'date',
+		'order'          => 'DESC',
+	);
+	if ( $fl_topic_slug ) {
+		$fl_query_args['tax_query'] = array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query -- a single, already-validated exact-slug filter on a small custom post type; not a candidate for the usual tax_query performance concerns.
+			array(
+				'taxonomy' => 'fl_community_topic',
+				'field'    => 'slug',
+				'terms'    => $fl_topic_slug,
+			),
+		);
+	}
+	$fl_community_query = new WP_Query( $fl_query_args );
+}
 
 // Discord embed (Phase 8, Task F) — a display setting only, so read
 // directly, same-request, no /server-config bridge needed (contrast with
@@ -65,12 +87,22 @@ $fl_community_query = new WP_Query( $fl_query_args );
 // the server's main channel; visitors can switch channels inside the
 // widget itself). Requiring a channel ID too would have been one more
 // "find this ID in Discord" step than the feature actually needs.
-$fl_community_cfg  = fourliberty_community_config();
 $fl_discord_enabled = ! empty( $fl_community_cfg['discordWidgetEnabled'] )
 	&& ! empty( $fl_community_cfg['discordWidgetServerId'] );
 ?>
 <!-- wp:group {"layout":{"type":"constrained","contentSize":"820px"}} -->
 <div class="wp-block-group">
+
+	<?php if ( $fl_show_forum_promo ) : ?>
+	<!-- wp:html -->
+	<div class="fl-forum-promo">
+		<div class="fl-forum-promo__label">THE FORUM</div>
+		<h2 class="fl-forum-promo__title">Join the conversation</h2>
+		<p class="fl-forum-promo__body">Threaded discussion, search, and email digests so you never miss a thread.</p>
+		<a class="fl-forum-promo__cta" href="<?php echo esc_url( $fl_forum_url ); ?>">Open the Forum &rarr;</a>
+	</div>
+	<!-- /wp:html -->
+	<?php endif; ?>
 
 	<?php if ( $fl_discord_enabled ) : ?>
 	<!-- wp:html -->
@@ -88,6 +120,8 @@ $fl_discord_enabled = ! empty( $fl_community_cfg['discordWidgetEnabled'] )
 	<script src="https://cdn.jsdelivr.net/npm/@widgetbot/html-embed"></script>
 	<!-- /wp:html -->
 	<?php endif; ?>
+
+	<?php if ( $fl_show_builtin ) : ?>
 
 	<!-- wp:html -->
 	<div class="fl-community-composer" data-fl="community-composer-area">
@@ -124,7 +158,7 @@ $fl_discord_enabled = ! empty( $fl_community_cfg['discordWidgetEnabled'] )
 	<!-- /wp:html -->
 	<?php endif; ?>
 
-	<?php if ( $fl_community_query->have_posts() ) : ?>
+	<?php if ( $fl_community_query && $fl_community_query->have_posts() ) : ?>
 
 	<!-- wp:html -->
 	<div class="fl-community-feed">
@@ -180,6 +214,8 @@ $fl_discord_enabled = ! empty( $fl_community_cfg['discordWidgetEnabled'] )
 	<!-- /wp:paragraph -->
 
 	<?php endif; wp_reset_postdata(); ?>
+
+	<?php endif; // $fl_show_builtin ?>
 
 </div>
 <!-- /wp:group -->

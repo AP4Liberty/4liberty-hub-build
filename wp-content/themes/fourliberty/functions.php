@@ -486,6 +486,13 @@ function fourliberty_community_config() {
 		'discordWidgetEnabled'    => false,
 		'discordWidgetServerId'   => '',
 		'discordWidgetChannelId'  => '',
+		// Phase 9 (Discourse trial) — same non-security, display-only
+		// reasoning as the Discord fields above. 'forumUrl' blank always
+		// forces 'builtin' behavior in community-feed.php, regardless of
+		// what 'forumMode' says, so a half-configured trial never renders a
+		// dead-end promo card.
+		'forumMode'               => 'builtin',
+		'forumUrl'                => '',
 	);
 
 	$stored = get_option( 'fourliberty_community_config' );

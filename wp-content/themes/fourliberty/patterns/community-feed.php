@@ -99,7 +99,35 @@ $fl_discord_enabled = ! empty( $fl_community_cfg['discordWidgetEnabled'] )
 		<div class="fl-forum-promo__label">THE FORUM</div>
 		<h2 class="fl-forum-promo__title">Join the conversation</h2>
 		<p class="fl-forum-promo__body">Threaded discussion, search, and email digests so you never miss a thread.</p>
-		<a class="fl-forum-promo__cta" href="<?php echo esc_url( $fl_forum_url ); ?>">Open the Forum &rarr;</a>
+		<?php
+		// target="_blank" is Austin's explicit call (2026-07-27), reversing the
+		// original plan's "plain link" note: the forum is a separate hostname,
+		// and he wants 4libertynetwork.com to stay open behind it rather than
+		// being navigated away from. rel="noopener" is mandatory with _blank.
+		?>
+		<a class="fl-forum-promo__cta" href="<?php echo esc_url( $fl_forum_url ); ?>" target="_blank" rel="noopener">Open the Forum &rarr;</a>
+	</div>
+
+	<?php
+	// Live topic list, served by Discourse's own /embed/topics and framed here
+	// so the actual conversation shows up ON this domain instead of the page
+	// being a single button. Requires TWO things on the Discourse side, both
+	// already configured: 4libertynetwork.com added as an embeddable host
+	// (which is what puts this origin in Discourse's frame-ancestors CSP —
+	// the forum refuses framing otherwise), and the `embed_topics_list` site
+	// setting turned on, without which this endpoint 400s no matter what
+	// params you pass. Discourse renders it with its own embed stylesheet, so
+	// it inherits the forum's colors, not this theme's.
+	?>
+	<div class="fl-forum-topics">
+		<div class="fl-forum-topics__label">LATEST FROM THE FORUM</div>
+		<iframe
+			class="fl-forum-topics__frame"
+			src="<?php echo esc_url( trailingslashit( $fl_forum_url ) . 'embed/topics?per_page=8' ); ?>"
+			title="Latest forum topics"
+			loading="lazy"
+			referrerpolicy="origin"
+		></iframe>
 	</div>
 	<!-- /wp:html -->
 	<?php endif; ?>

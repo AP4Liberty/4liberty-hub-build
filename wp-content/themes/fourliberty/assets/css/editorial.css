@@ -2170,6 +2170,33 @@ a.fl-tier:hover { border-color: var(--wp--preset--color--gold-deep); }
 	border-color: var(--wp--preset--color--gold);
 }
 
+.fl-forum-topics {
+	background: var(--wp--preset--color--surface);
+	border: 1px solid var(--wp--preset--color--line);
+	border-radius: 12px;
+	padding: 14px;
+	margin-bottom: 24px;
+	overflow: hidden;
+}
+.fl-forum-topics__label {
+	font-size: .72rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .04em;
+	color: var(--wp--preset--color--muted);
+	margin-bottom: 10px;
+}
+.fl-forum-topics__frame {
+	display: block;
+	width: 100%;
+	height: 460px;
+	border: 0;
+	border-radius: 8px;
+	/* Discourse serves the embed with its own dark stylesheet; this just keeps
+	   the corners from showing a white flash before it paints. */
+	background: var(--wp--preset--color--ink);
+}
+
 .fl-community-discord {
 	background: var(--wp--preset--color--surface);
 	border: 1px solid var(--wp--preset--color--line);
@@ -2201,4 +2228,6 @@ a.fl-tier:hover { border-color: var(--wp--preset--color--gold-deep); }
 	.fl-community-discord widgetbot { height: 320px !important; }
 	.fl-forum-promo { padding: 16px; }
 	.fl-forum-promo__cta { display: block; width: 100%; box-sizing: border-box; }
+	.fl-forum-topics { padding: 10px; }
+	.fl-forum-topics__frame { height: 380px; }
 }

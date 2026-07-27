@@ -829,3 +829,131 @@ function fourliberty_swap_in_discourse_comments( $block_content, $block ) {
 	return ( '' !== trim( wp_strip_all_tags( $rendered ) ) ) ? $rendered : $block_content;
 }
 add_filter( 'render_block', 'fourliberty_swap_in_discourse_comments', 10, 2 );
+
+/**
+ * The X handle credited in shared posts (no leading @ — X's `via` param
+ * rejects it). Filterable so it never has to be hunted for in markup again.
+ */
+function fourliberty_share_via_handle() {
+	return (string) apply_filters( 'fourliberty_share_via_handle', 'AP4Liberty' );
+}
+
+/**
+ * Build one share row (X + Facebook) for the current post.
+ *
+ * DELIBERATELY ZERO JAVASCRIPT AND ZERO THIRD-PARTY REQUESTS. These are two
+ * plain <a> tags to endpoints that need no API key, no app id, and no SDK —
+ * both verified live 2026-07-27 against a real post on this site. The share
+ * plugins that were considered instead (AddToAny, ShareThis) work by loading
+ * a script from THEIR servers on every pageview, which is both a third-party
+ * tracker on a politically-exposed audience and an extra round trip; and
+ * every added plugin is more attack surface on a site that has already been
+ * compromised once (see the 2026-07-15 incident).
+ *
+ * Share COUNTS are deliberately absent: X removed its public count endpoint
+ * in 2015 and Facebook's needs a Graph API token, so no plugin can honestly
+ * show them either — and low counts on a growing site suppress sharing.
+ *
+ * Facebook's sharer takes ONLY `u`; it has ignored `quote`/`title` for years,
+ * pulling the headline and image from the page's own Open Graph tags instead
+ * (already present and correct on this site's posts — verified, including a
+ * summary_large_image twitter:card).
+ *
+ * @param string $position 'top' or 'bottom' — styling hook only.
+ * @return string HTML, or '' if anything needed is missing.
+ */
+function fourliberty_share_row( $position ) {
+	$post_id = get_the_ID();
+	if ( ! $post_id ) {
+		return '';
+	}
+
+	$url = get_permalink( $post_id );
+	if ( ! $url ) {
+		return '';
+	}
+
+	// get_the_title() returns HTML entities (&#8217; for a curly apostrophe),
+	// which would end up literal in the tweet box. Decode to real characters
+	// BEFORE rawurlencode, or the share text reads like broken markup.
+	$title = html_entity_decode( wp_strip_all_tags( get_the_title( $post_id ) ), ENT_QUOTES, 'UTF-8' );
+
+	$x_url = 'https://x.com/intent/post?url=' . rawurlencode( $url )
+		. '&text=' . rawurlencode( $title )
+		. '&via=' . rawurlencode( fourliberty_share_via_handle() );
+
+	$fb_url = 'https://www.facebook.com/sharer/sharer.php?u=' . rawurlencode( $url );
+
+	// Inline SVG rather than an icon font or sprite sheet: two paths cost
+	// ~700 bytes in the HTML and zero extra requests.
+	$x_icon  = '<svg class="fl-share__icon" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false"><path fill="currentColor" d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>';
+	$fb_icon = '<svg class="fl-share__icon" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false"><path fill="currentColor" d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"/></svg>';
+
+	$label = ( 'bottom' === $position )
+		? __( 'Share this', 'fourliberty' )
+		: __( 'Share', 'fourliberty' );
+
+	// aria-labels carry the headline so a screen reader hears WHAT is being
+	// shared; the visible text stays short.
+	$x_aria  = sprintf( __( 'Post "%s" on X', 'fourliberty' ), $title );
+	$fb_aria = sprintf( __( 'Share "%s" on Facebook', 'fourliberty' ), $title );
+
+	return sprintf(
+		'<div class="fl-share fl-share--%1$s">'
+			. '<span class="fl-share__label">%2$s</span>'
+			. '<a class="fl-share__btn fl-share__btn--x" href="%3$s" target="_blank" rel="noopener noreferrer nofollow" aria-label="%4$s">%5$s<span>%6$s</span></a>'
+			. '<a class="fl-share__btn fl-share__btn--fb" href="%7$s" target="_blank" rel="noopener noreferrer nofollow" aria-label="%8$s">%9$s<span>%10$s</span></a>'
+		. '</div>',
+		esc_attr( $position ),
+		esc_html( $label ),
+		esc_url( $x_url ),
+		esc_attr( $x_aria ),
+		$x_icon,
+		esc_html__( 'Post on X', 'fourliberty' ),
+		esc_url( $fb_url ),
+		esc_attr( $fb_aria ),
+		$fb_icon,
+		esc_html__( 'Share on Facebook', 'fourliberty' )
+	);
+}
+
+/**
+ * Put a share row above and below the article body on single blog posts.
+ *
+ * WHY A FILTER AND NOT A templates/single.html EDIT: same two reasons as
+ * fourliberty_swap_in_discourse_comments() above — a block template that has
+ * ever been touched in the Site Editor is served from the DATABASE, and the
+ * theme file is then ignored, so a markup change there can silently do
+ * nothing. A render_block filter always runs. (Patterns are no good either:
+ * they are evaluated on `init`, before the loop, so get_the_ID() is
+ * unreliable in them.)
+ *
+ * Placement: the top row lands directly above the first paragraph, under the
+ * featured image; the bottom row sits between the article and the comments.
+ *
+ * is_singular('post') keeps this off pages, off the community CPT, and off
+ * any query loop rendering post content in a feed.
+ */
+function fourliberty_add_share_buttons( $block_content, $block ) {
+	if ( ! isset( $block['blockName'] ) || 'core/post-content' !== $block['blockName'] ) {
+		return $block_content;
+	}
+	if ( is_admin() || is_feed() || ! is_singular( 'post' ) ) {
+		return $block_content;
+	}
+
+	// Never advertise a post the reader had to unlock — the share link would
+	// just show the password form to everyone who clicked it.
+	if ( post_password_required() ) {
+		return $block_content;
+	}
+
+	$top    = fourliberty_share_row( 'top' );
+	$bottom = fourliberty_share_row( 'bottom' );
+	if ( '' === $top && '' === $bottom ) {
+		return $block_content;
+	}
+
+	return $top . $block_content . $bottom;
+}
+add_filter( 'render_block', 'fourliberty_add_share_buttons', 10, 2 );

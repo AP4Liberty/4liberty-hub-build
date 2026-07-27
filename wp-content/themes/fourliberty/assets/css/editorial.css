@@ -1854,6 +1854,80 @@ a.fl-tier:hover { border-color: var(--wp--preset--color--gold-deep); }
 	color: var(--wp--preset--color--headline);
 }
 
+/* ---------- Share row (single posts, above + below the article) ----------
+   Rendered by fourliberty_add_share_buttons() in functions.php. No JS and no
+   third-party assets — see the comment block there for why not a plugin.
+   Chips sit on the card surface so they read as part of the page instead of
+   two loud brand-coloured blobs; the brand identity lives in the glyph, and
+   gold (the theme accent) does the hover work. */
+.fl-share {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+.fl-share--top {
+	margin: 0 0 26px;
+	padding-bottom: 20px;
+	border-bottom: 1px solid var(--wp--preset--color--line);
+}
+.fl-share--bottom {
+	margin: 30px 0 0;
+	padding-top: 22px;
+	border-top: 1px solid var(--wp--preset--color--line);
+}
+.fl-share__label {
+	font-family: var(--wp--preset--font-family--mono);
+	font-size: .68rem;
+	letter-spacing: .14em;
+	text-transform: uppercase;
+	color: var(--wp--preset--color--muted);
+}
+.fl-share__btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 15px;
+	border-radius: var(--wp--custom--radius--pill, 999px);
+	background: var(--wp--preset--color--surface);
+	border: 1px solid var(--wp--preset--color--line);
+	color: var(--wp--preset--color--headline);
+	font-size: .82rem;
+	font-weight: 600;
+	line-height: 1;
+	/* The article body underlines every link (see .wp-block-post-content a) —
+	   these are buttons, so undo it in both resting and hover states. */
+	text-decoration: none !important;
+	transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.fl-share__icon { flex: none; display: block; }
+.fl-share__btn:hover,
+.fl-share__btn:focus-visible {
+	background: var(--wp--preset--color--surface-deep);
+	border-color: var(--wp--preset--color--gold-deep);
+	color: var(--wp--preset--color--gold);
+}
+.fl-share__btn:focus-visible {
+	outline: 2px solid var(--wp--preset--color--gold);
+	outline-offset: 2px;
+}
+/* Breakpoints are measured, not guessed. On a 720px column with 22px root
+   padding the two chips need 289px side by side; the eyebrow costs another
+   39px ("Share") or 79px ("Share this"), which is what pushes the row onto
+   a second line on ordinary phones. So the label goes below 480px — the
+   icons already say what the row is — and the chips tighten below 400px.
+   Measured result: one clean line at every width from 344px to 1440px.
+   At 320px the two chips stack, which is correct rather than broken: no
+   overflow, and the tap targets get bigger. An earlier 380px breakpoint
+   made a 390px phone look WORSE than a 375px one — hence the real numbers. */
+@media (max-width: 479px) {
+	.fl-share__label { display: none; }
+}
+@media (max-width: 399px) {
+	.fl-share { gap: 8px; }
+	.fl-share__btn { padding: 8px 12px; font-size: .78rem; }
+}
+
 /* ---------- Footer ---------- */
 .fl-footer {
 	margin-top: 44px;
